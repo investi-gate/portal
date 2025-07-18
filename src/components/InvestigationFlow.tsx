@@ -140,7 +140,7 @@ export function InvestigationFlow({ onEntitySelect, onRelationSelect }: Investig
 
   if (entitiesLoading || relationsLoading) {
     return (
-      <div className="flex items-center justify-center h-full">
+      <div className="flex items-center justify-center h-full" data-test="loading-state">
         <div className="text-lg">Loading investigation data...</div>
       </div>
     );
@@ -158,9 +158,10 @@ export function InvestigationFlow({ onEntitySelect, onRelationSelect }: Investig
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
       fitView
+      data-test="react-flow"
     >
-      <Controls />
-      <MiniMap />
+      <Controls data-test="flow-controls" />
+      <MiniMap data-test="flow-minimap" />
       <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
     </ReactFlow>
   );

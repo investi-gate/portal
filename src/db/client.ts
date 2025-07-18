@@ -1,7 +1,12 @@
 import { Client, Pool } from 'pg';
 import * as dotenv from 'dotenv';
 
-dotenv.config();
+// Load appropriate environment file based on NODE_ENV
+if (process.env.NODE_ENV === 'test') {
+  dotenv.config({ path: '.env.test' });
+} else {
+  dotenv.config();
+}
 
 const connectionString = process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/investi_gate?sslmode=disable';
 
