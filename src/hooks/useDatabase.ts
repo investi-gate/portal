@@ -31,7 +31,10 @@ export function useEntities() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(input),
       });
-      if (!response.ok) throw new Error('Failed to create entity');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create entity');
+      }
       const data = await response.json();
       setEntities(prev => [...prev, data.entity]);
       return data.entity;

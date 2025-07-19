@@ -40,8 +40,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ entity }, { status: 201 });
   } catch (error) {
     console.error('Error creating entity:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to create entity';
     return NextResponse.json(
-      { error: 'Failed to create entity' },
+      { error: errorMessage },
       { status: 500 }
     );
   }

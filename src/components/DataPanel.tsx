@@ -16,11 +16,27 @@ export function DataPanel() {
 
   const handleCreateEntity = async () => {
     try {
-      // For demo purposes, create dummy type IDs
-      const facialId = entityType === 'facial' || entityType === 'both' ? 
-        crypto.randomUUID() : undefined;
-      const textId = entityType === 'text' || entityType === 'both' ? 
-        crypto.randomUUID() : undefined;
+      let facialId: string | undefined;
+      let textId: string | undefined;
+
+      // Create entity type records first
+      if (entityType === 'facial' || entityType === 'both') {
+        const facialResponse = await fetch('/api/entity-types/facial', {
+          method: 'POST',
+        });
+        if (!facialResponse.ok) throw new Error('Failed to create facial data type');
+        const facialData = await facialResponse.json();
+        facialId = facialData.facialData.id;
+      }
+
+      if (entityType === 'text' || entityType === 'both') {
+        const textResponse = await fetch('/api/entity-types/text', {
+          method: 'POST',
+        });
+        if (!textResponse.ok) throw new Error('Failed to create text data type');
+        const textData = await textResponse.json();
+        textId = textData.textData.id;
+      }
 
       await createEntity({
         type_facial_data_id: facialId,
@@ -65,6 +81,7 @@ export function DataPanel() {
             <button
               onClick={() => setShowCreateEntity(!showCreateEntity)}
               className="text-sm px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
+              data-test="add-entity-button"
             >
               + Add Entity
             </button>
@@ -79,6 +96,7 @@ export function DataPanel() {
                     value={entityType}
                     onChange={(e) => setEntityType(e.target.value as any)}
                     className="w-full px-2 py-1 text-sm border rounded"
+                    data-test="entity-type-select"
                   >
                     <option value="facial">Facial Data</option>
                     <option value="text">Text Data</option>
@@ -89,6 +107,7 @@ export function DataPanel() {
                   <button
                     onClick={handleCreateEntity}
                     className="text-sm px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600"
+                    data-test="create-entity-button"
                   >
                     Create
                   </button>
@@ -108,10 +127,11 @@ export function DataPanel() {
               <div
                 key={entity.id}
                 className="flex justify-between items-center p-2 text-sm bg-gray-50 rounded"
+                data-test="entity-item"
               >
                 <div>
                   <span className="font-medium">{entity.id.slice(0, 8)}</span>
-                  <span className="ml-2 text-xs text-gray-600">
+                  <span className="ml-2 text-xs text-gray-600" data-test="entity-icons">
                     {entity.type_facial_data_id && '👤'}
                     {entity.type_text_data_id && '📝'}
                   </span>

@@ -29,9 +29,11 @@
 - **Test Structure**: Page Object Model pattern recommended
 - **Coverage**: Test core user flows including node creation, edge connections, and flow interactions
 - **Test Database**: Uses separate `investi_gate_test` database configured in `.env.test`
+- **CRITICAL**: All interactive UI elements MUST have `data-test` attributes for reliable e2e testing
 
 ## E2E Testing Best Practices
-- Add `data-test` attributes to all interactive elements
+- Add `data-test` attributes to all interactive elements (use `data-test="button-name"` format)
+- Use `page.getByTestId()` in tests instead of role or text selectors for reliability
 - Use descriptive test names that explain the user flow
 - Keep tests independent and isolated
 - Test against development server locally

@@ -13,8 +13,14 @@ const TEST_DATABASE_URL = process.env.DATABASE_URL || 'postgres://postgres:postg
 
 // Parse database name from connection string
 const getDatabaseName = (url: string): string => {
-  const match = url.match(/\/([^?]+)(\?|$)/);
-  return match ? match[1] : 'investi_gate_test';
+  // Match the database name between the last slash and either ? or end of string
+  const match = url.match(/\/([^/?]+)(?:\?|$)/);
+  if (match && match[1]) {
+    // Extract just the database name, not the full path
+    const parts = match[1].split('/');
+    return parts[parts.length - 1];
+  }
+  return 'investi_gate_test';
 };
 
 // Parse connection URL without database name
@@ -28,7 +34,9 @@ export async function setupTestDatabase() {
   const dbName = getDatabaseName(TEST_DATABASE_URL);
   const connectionUrl = getConnectionUrl(TEST_DATABASE_URL);
   
-  console.log(`Setting up test database: ${dbName}`);
+  console.log(`Setting up test database: ${TEST_DATABASE_URL}`);
+  console.log(`Parsed database name: ${dbName}`);
+  console.log(`Connection URL: ${connectionUrl}`);
   
   // Connect to postgres database to create test database
   const client = new Client({ connectionString: connectionUrl });
@@ -37,11 +45,11 @@ export async function setupTestDatabase() {
     await client.connect();
     
     // Drop existing test database if exists
-    await client.query(`DROP DATABASE IF EXISTS ${dbName}`);
+    await client.query(`DROP DATABASE IF EXISTS "${dbName}"`);
     console.log(`Dropped existing database: ${dbName}`);
     
     // Create new test database
-    await client.query(`CREATE DATABASE ${dbName}`);
+    await client.query(`CREATE DATABASE "${dbName}"`);
     console.log(`Created test database: ${dbName}`);
     
   } catch (error) {
@@ -75,7 +83,7 @@ export async function teardownTestDatabase() {
     `);
     
     // Drop test database
-    await client.query(`DROP DATABASE IF EXISTS ${dbName}`);
+    await client.query(`DROP DATABASE IF EXISTS "${dbName}"`);
     console.log(`Dropped test database: ${dbName}`);
     
   } catch (error) {
@@ -90,12 +98,12 @@ async function runMigrations() {
   console.log('Running migrations on test database...');
   
   // Get the migrations directory path
-  const migrationsPath = path.resolve(__dirname, '../../../migrations');
+  const migrationsPath = path.resolve(__dirname, '../../../../migrations');
   
   try {
     // Change to migrations directory and run migrations
     const { stdout, stderr } = await execAsync(
-      `cd ${migrationsPath} && DATABASE_URL="${TEST_DATABASE_URL}" task up`,
+      `migrate -path ${migrationsPath}/files -database "${TEST_DATABASE_URL}" up`,
       { env: { ...process.env, DATABASE_URL: TEST_DATABASE_URL } }
     );
     
@@ -121,28 +129,37 @@ export async function seedTestData() {
   try {
     await client.connect();
     
-    // Insert test entity types
-    await client.query(`
-      INSERT INTO entity_types (id, name, description) VALUES 
-      ('facial_data', 'Facial Data', 'Facial recognition data type'),
-      ('text_data', 'Text Data', 'Textual information type')
-      ON CONFLICT (id) DO NOTHING
+    // Insert test entity types - facial data
+    const facialResult = await client.query(`
+      INSERT INTO entity_type__facial_data DEFAULT VALUES
+      RETURNING id
     `);
+    const facialDataId = facialResult.rows[0].id;
+    
+    // Insert test entity types - text data
+    const textResult = await client.query(`
+      INSERT INTO entity_type__text_data DEFAULT VALUES
+      RETURNING id
+    `);
+    const textDataId = textResult.rows[0].id;
     
     // Insert test entities
-    await client.query(`
-      INSERT INTO entities (id, type_facial_data_id, type_text_data_id) VALUES
-      ('test-entity-1', 'facial_data', NULL),
-      ('test-entity-2', NULL, 'text_data'),
-      ('test-entity-3', 'facial_data', 'text_data')
-    `);
+    const entityResult = await client.query(`
+      INSERT INTO entities (type_facial_data_id, type_text_data_id) VALUES
+      ($1, NULL),
+      (NULL, $2),
+      ($3, $4)
+      RETURNING id
+    `, [facialDataId, textDataId, facialDataId, textDataId]);
+    
+    const [entity1, entity2, entity3] = entityResult.rows;
     
     // Insert test relations
     await client.query(`
-      INSERT INTO relations (id, subject_entity_id, predicate, object_entity_id, certainty_factor) VALUES
-      ('test-relation-1', 'test-entity-1', 'knows', 'test-entity-2', 0.85),
-      ('test-relation-2', 'test-entity-2', 'works_with', 'test-entity-3', 0.95)
-    `);
+      INSERT INTO relations (subject_entity_id, predicate, object_entity_id) VALUES
+      ($1, 'knows', $2),
+      ($3, 'works_with', $4)
+    `, [entity1.id, entity2.id, entity2.id, entity3.id]);
     
     console.log('Test data seeded successfully');
     
@@ -165,6 +182,8 @@ export async function clearTestData() {
     // Clear data in correct order due to foreign key constraints
     await client.query('DELETE FROM relations');
     await client.query('DELETE FROM entities');
+    await client.query('DELETE FROM entity_type__facial_data');
+    await client.query('DELETE FROM entity_type__text_data');
     
     console.log('Test data cleared successfully');
     
