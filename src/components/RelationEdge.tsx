@@ -33,7 +33,7 @@ export function RelationEdge({
           className="relation-edge-label nodrag nopan"
           data-test={`relation-edge-label-${id}`}
         >
-          {data?.label || 'relates-to'}
+          {data?.label || ''}
         </div>
       </EdgeLabelRenderer>
     </>

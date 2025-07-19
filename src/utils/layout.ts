@@ -231,7 +231,7 @@ export function calculateGraphLayout(
       position,
       data: {
         relation: relation,
-        label: relation.predicate || 'relates-to',
+        label: relation.predicate || '',
       },
     });
   });
