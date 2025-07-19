@@ -18,9 +18,21 @@ export class TestDatabaseUtils {
     await this.client.end();
   }
 
+  async close() {
+    await this.disconnect();
+  }
+
   async clearAllData() {
     await this.client.query('DELETE FROM relations');
     await this.client.query('DELETE FROM entities');
+  }
+
+  async cleanDatabase() {
+    await this.clearAllData();
+  }
+
+  async cleanRelations() {
+    await this.client.query('DELETE FROM relations');
   }
 
   async createEntity(entity: Partial<Entity> & { id: string }): Promise<Entity> {
@@ -165,4 +177,49 @@ export const testDataFactories = {
 
     return { entities, relations };
   },
+};
+
+// Add test helper methods to TestDatabaseUtils
+declare module './db-utils' {
+  interface TestDatabaseUtils {
+    createTestEntity(options: { facial: boolean; text: boolean }): Promise<string>;
+    createTestRelation(subjectId: string, predicate: string, objectId: string): Promise<string>;
+    createTestMetaRelation(subjectRelationId: string, predicate: string, objectRelationId: string): Promise<string>;
+  }
+}
+
+TestDatabaseUtils.prototype.createTestEntity = async function(options: { facial: boolean; text: boolean }): Promise<string> {
+  const id = `entity-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const entity = await this.createEntity({
+    id,
+    type_facial_data_id: options.facial ? 'facial_data' : null,
+    type_text_data_id: options.text ? 'text_data' : null,
+  });
+  return entity.id;
+};
+
+TestDatabaseUtils.prototype.createTestRelation = async function(subjectId: string, predicate: string, objectId: string): Promise<string> {
+  const relation = await this.createRelation({
+    subject_entity_id: subjectId,
+    predicate,
+    object_entity_id: objectId,
+    certainty_factor: 1.0,
+  });
+  return relation.id;
+};
+
+TestDatabaseUtils.prototype.createTestMetaRelation = async function(subjectRelationId: string, predicate: string, objectRelationId: string): Promise<string> {
+  const result = await this.client.query<Relation>(
+    `INSERT INTO relations (id, subject_relation_id, predicate, object_relation_id, certainty_factor) 
+     VALUES ($1, $2, $3, $4, $5) 
+     RETURNING *`,
+    [
+      `relation-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      subjectRelationId,
+      predicate,
+      objectRelationId,
+      1.0
+    ]
+  );
+  return result.rows[0].id;
 };

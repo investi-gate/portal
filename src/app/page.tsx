@@ -46,7 +46,24 @@ export default function Home() {
             {selectedRelation && (
               <div data-test="selected-relation">
                 <h4 className="font-semibold text-sm mb-2">Selected Relation</h4>
+                <p className="text-xs text-gray-600">ID: {selectedRelation.id}</p>
                 <p className="text-xs text-gray-600">Predicate: {selectedRelation.predicate}</p>
+                <div className="text-xs text-gray-600 mt-1">
+                  <div>
+                    Subject: {selectedRelation.subject_entity_id ? (
+                      <>Entity: {selectedRelation.subject_entity_id.slice(0, 8)}</>
+                    ) : selectedRelation.subject_relation_id ? (
+                      <>Relation: {selectedRelation.subject_relation_id.slice(0, 8)}</>
+                    ) : 'None'}
+                  </div>
+                  <div>
+                    Object: {selectedRelation.object_entity_id ? (
+                      <>Entity: {selectedRelation.object_entity_id.slice(0, 8)}</>
+                    ) : selectedRelation.object_relation_id ? (
+                      <>Relation: {selectedRelation.object_relation_id.slice(0, 8)}</>
+                    ) : 'None'}
+                  </div>
+                </div>
               </div>
             )}
           </div>

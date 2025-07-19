@@ -13,6 +13,8 @@ export function DataPanel() {
   const [selectedSubject, setSelectedSubject] = useState('');
   const [selectedObject, setSelectedObject] = useState('');
   const [predicate, setPredicate] = useState('');
+  const [subjectType, setSubjectType] = useState<'entity' | 'relation'>('entity');
+  const [objectType, setObjectType] = useState<'entity' | 'relation'>('entity');
 
   const handleCreateEntity = async () => {
     try {
@@ -53,16 +55,32 @@ export function DataPanel() {
     if (!selectedSubject || !selectedObject || !predicate) return;
 
     try {
-      await createRelation({
-        subject_entity_id: selectedSubject,
-        object_entity_id: selectedObject,
+      const relationData: any = {
         predicate: predicate,
-      });
+      };
+
+      // Set subject based on type
+      if (subjectType === 'entity') {
+        relationData.subject_entity_id = selectedSubject;
+      } else {
+        relationData.subject_relation_id = selectedSubject;
+      }
+
+      // Set object based on type
+      if (objectType === 'entity') {
+        relationData.object_entity_id = selectedObject;
+      } else {
+        relationData.object_relation_id = selectedObject;
+      }
+
+      await createRelation(relationData);
       
       setShowCreateRelation(false);
       setSelectedSubject('');
       setSelectedObject('');
       setPredicate('');
+      setSubjectType('entity');
+      setObjectType('entity');
     } catch (error) {
       console.error('Failed to create relation:', error);
     }
@@ -164,18 +182,63 @@ export function DataPanel() {
             <div className="p-3 bg-gray-50 rounded mb-2">
               <div className="space-y-2">
                 <div>
-                  <label className="text-xs text-gray-600">Subject Entity</label>
+                  <label className="text-xs text-gray-600">Subject Type</label>
+                  <div className="flex gap-2 mb-1">
+                    <label className="flex items-center">
+                      <input
+                        type="radio"
+                        value="entity"
+                        checked={subjectType === 'entity'}
+                        onChange={(e) => {
+                          setSubjectType('entity');
+                          setSelectedSubject('');
+                        }}
+                        className="mr-1"
+                        data-test="subject-type-entity"
+                      />
+                      <span className="text-sm">Entity</span>
+                    </label>
+                    <label className="flex items-center">
+                      <input
+                        type="radio"
+                        value="relation"
+                        checked={subjectType === 'relation'}
+                        onChange={(e) => {
+                          setSubjectType('relation');
+                          setSelectedSubject('');
+                        }}
+                        className="mr-1"
+                        data-test="subject-type-relation"
+                      />
+                      <span className="text-sm">Relation</span>
+                    </label>
+                  </div>
                   <select
                     value={selectedSubject}
                     onChange={(e) => setSelectedSubject(e.target.value)}
                     className="w-full px-2 py-1 text-sm border rounded"
+                    data-test="relation-subject-select"
                   >
-                    <option value="">Select entity...</option>
-                    {entities.map((entity) => (
-                      <option key={entity.id} value={entity.id}>
-                        {entity.id.slice(0, 8)}
-                      </option>
-                    ))}
+                    <option value="">Select {subjectType}...</option>
+                    {subjectType === 'entity' ? (
+                      entities.map((entity) => (
+                        <option key={entity.id} value={entity.id}>
+                          {entity.id.slice(0, 8)}
+                          {entity.type_facial_data_id && ' 👤'}
+                          {entity.type_text_data_id && ' 📝'}
+                        </option>
+                      ))
+                    ) : (
+                      relations.map((relation) => (
+                        <option key={relation.id} value={relation.id}>
+                          {relation.subject_entity_id?.slice(0, 6) || relation.subject_relation_id?.slice(0, 6)}
+                          {' → '}
+                          {relation.predicate}
+                          {' → '}
+                          {relation.object_entity_id?.slice(0, 6) || relation.object_relation_id?.slice(0, 6)}
+                        </option>
+                      ))
+                    )}
                   </select>
                 </div>
                 <div>
@@ -184,29 +247,76 @@ export function DataPanel() {
                     type="text"
                     value={predicate}
                     onChange={(e) => setPredicate(e.target.value)}
-                    placeholder="e.g., knows, related-to, works-with"
+                    placeholder="e.g., implies, contradicts, supports"
                     className="w-full px-2 py-1 text-sm border rounded"
+                    data-test="relation-predicate-input"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-600">Object Entity</label>
+                  <label className="text-xs text-gray-600">Object Type</label>
+                  <div className="flex gap-2 mb-1">
+                    <label className="flex items-center">
+                      <input
+                        type="radio"
+                        value="entity"
+                        checked={objectType === 'entity'}
+                        onChange={(e) => {
+                          setObjectType('entity');
+                          setSelectedObject('');
+                        }}
+                        className="mr-1"
+                        data-test="object-type-entity"
+                      />
+                      <span className="text-sm">Entity</span>
+                    </label>
+                    <label className="flex items-center">
+                      <input
+                        type="radio"
+                        value="relation"
+                        checked={objectType === 'relation'}
+                        onChange={(e) => {
+                          setObjectType('relation');
+                          setSelectedObject('');
+                        }}
+                        className="mr-1"
+                        data-test="object-type-relation"
+                      />
+                      <span className="text-sm">Relation</span>
+                    </label>
+                  </div>
                   <select
                     value={selectedObject}
                     onChange={(e) => setSelectedObject(e.target.value)}
                     className="w-full px-2 py-1 text-sm border rounded"
+                    data-test="relation-object-select"
                   >
-                    <option value="">Select entity...</option>
-                    {entities.map((entity) => (
-                      <option key={entity.id} value={entity.id}>
-                        {entity.id.slice(0, 8)}
-                      </option>
-                    ))}
+                    <option value="">Select {objectType}...</option>
+                    {objectType === 'entity' ? (
+                      entities.map((entity) => (
+                        <option key={entity.id} value={entity.id}>
+                          {entity.id.slice(0, 8)}
+                          {entity.type_facial_data_id && ' 👤'}
+                          {entity.type_text_data_id && ' 📝'}
+                        </option>
+                      ))
+                    ) : (
+                      relations.map((relation) => (
+                        <option key={relation.id} value={relation.id}>
+                          {relation.subject_entity_id?.slice(0, 6) || relation.subject_relation_id?.slice(0, 6)}
+                          {' → '}
+                          {relation.predicate}
+                          {' → '}
+                          {relation.object_entity_id?.slice(0, 6) || relation.object_relation_id?.slice(0, 6)}
+                        </option>
+                      ))
+                    )}
                   </select>
                 </div>
                 <div className="flex gap-2">
                   <button
                     onClick={handleCreateRelation}
                     className="text-sm px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600"
+                    data-test="create-relation-button"
                   >
                     Create
                   </button>
@@ -229,13 +339,21 @@ export function DataPanel() {
               >
                 <div className="text-xs">
                   <span className="font-medium">
-                    {relation.subject_entity_id?.slice(0, 8)}
+                    {relation.subject_entity_id ? (
+                      <>E: {relation.subject_entity_id.slice(0, 6)}</>
+                    ) : (
+                      <>R: {relation.subject_relation_id?.slice(0, 6)}</>
+                    )}
                   </span>
                   <span className="mx-1 text-gray-500">→</span>
                   <span className="text-gray-700">{relation.predicate}</span>
                   <span className="mx-1 text-gray-500">→</span>
                   <span className="font-medium">
-                    {relation.object_entity_id?.slice(0, 8)}
+                    {relation.object_entity_id ? (
+                      <>E: {relation.object_entity_id.slice(0, 6)}</>
+                    ) : (
+                      <>R: {relation.object_relation_id?.slice(0, 6)}</>
+                    )}
                   </span>
                 </div>
                 <button
