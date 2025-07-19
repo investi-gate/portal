@@ -2,14 +2,27 @@
 
 import React, { useState } from 'react';
 import { useEntities, useRelations } from '@/hooks/useDatabase';
-import { Entity } from '@/db/types';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
+import { User, FileText, Layers } from 'lucide-react';
 
 export function DataPanel() {
   const { entities, createEntity, deleteEntity } = useEntities();
   const { relations, createRelation, deleteRelation } = useRelations();
-  const [showCreateEntity, setShowCreateEntity] = useState(false);
+  const [entityModalOpen, setEntityModalOpen] = useState(false);
   const [showCreateRelation, setShowCreateRelation] = useState(false);
   const [entityType, setEntityType] = useState<'facial' | 'text' | 'both'>('facial');
+  const [textContent, setTextContent] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('');
   const [selectedObject, setSelectedObject] = useState('');
   const [predicate, setPredicate] = useState('');
@@ -32,10 +45,25 @@ export function DataPanel() {
       }
 
       if (entityType === 'text' || entityType === 'both') {
+        if (!textContent || textContent.trim() === '') {
+          alert('Text content is required for text entities');
+          return;
+        }
+        
         const textResponse = await fetch('/api/entity-types/text', {
           method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ content: textContent }),
         });
-        if (!textResponse.ok) throw new Error('Failed to create text data type');
+        
+        if (!textResponse.ok) {
+          const errorData = await textResponse.json();
+          console.error('Failed to create text data:', errorData);
+          throw new Error(errorData.error || 'Failed to create text data type');
+        }
+        
         const textData = await textResponse.json();
         textId = textData.textData.id;
       }
@@ -45,7 +73,9 @@ export function DataPanel() {
         type_text_data_id: textId,
       });
       
-      setShowCreateEntity(false);
+      setEntityModalOpen(false);
+      setEntityType('facial'); // Reset to default
+      setTextContent(''); // Reset text content
     } catch (error) {
       console.error('Failed to create entity:', error);
     }
@@ -87,7 +117,7 @@ export function DataPanel() {
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-4">
+    <div className="bg-white/80 backdrop-blur-md rounded-lg p-4 border border-gray-200">
       <h3 className="text-lg font-semibold mb-4">Data Management</h3>
       
       <div className="space-y-4">
@@ -96,62 +126,118 @@ export function DataPanel() {
             <h4 className="font-medium text-sm text-gray-700">
               Entities ({entities.length})
             </h4>
-            <button
-              onClick={() => setShowCreateEntity(!showCreateEntity)}
-              className="text-sm px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
-              data-test="add-entity-button"
-            >
-              + Add Entity
-            </button>
-          </div>
-          
-          {showCreateEntity && (
-            <div className="p-3 bg-gray-50 rounded mb-2">
-              <div className="space-y-2">
-                <div>
-                  <label className="text-xs text-gray-600">Entity Type</label>
-                  <select
-                    value={entityType}
-                    onChange={(e) => setEntityType(e.target.value as any)}
-                    className="w-full px-2 py-1 text-sm border rounded"
-                    data-test="entity-type-select"
-                  >
-                    <option value="facial">Facial Data</option>
-                    <option value="text">Text Data</option>
-                    <option value="both">Both</option>
-                  </select>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleCreateEntity}
-                    className="text-sm px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600"
-                    data-test="create-entity-button"
-                  >
-                    Create
-                  </button>
-                  <button
-                    onClick={() => setShowCreateEntity(false)}
-                    className="text-sm px-3 py-1 bg-gray-300 rounded hover:bg-gray-400"
+            <Dialog open={entityModalOpen} onOpenChange={setEntityModalOpen}>
+              <DialogTrigger asChild>
+                <Button
+                  variant="default"
+                  size="sm"
+                  data-test="add-entity-button"
+                  className="bg-blue-500 text-white hover:bg-blue-600"
+                >
+                  + Add Entity
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[500px]">
+                <DialogHeader>
+                  <DialogTitle>Add New Entity</DialogTitle>
+                  <DialogDescription>
+                    Select the type of data for your new entity.
+                  </DialogDescription>
+                </DialogHeader>
+                <Tabs value={entityType} onValueChange={(value: string) => setEntityType(value as 'facial' | 'text' | 'both')} className="w-full">
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="facial" data-test="entity-type-facial" className="flex items-center gap-2">
+                      <User className="h-4 w-4" />
+                      Facial Data
+                    </TabsTrigger>
+                    <TabsTrigger value="text" data-test="entity-type-text" className="flex items-center gap-2">
+                      <FileText className="h-4 w-4" />
+                      Text Data
+                    </TabsTrigger>
+                    <TabsTrigger value="both" data-test="entity-type-both" className="flex items-center gap-2">
+                      <Layers className="h-4 w-4" />
+                      Both
+                    </TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="facial" className="mt-4">
+                    <div className="text-sm text-gray-600">
+                      <p>Create an entity with facial recognition data.</p>
+                      <p className="mt-2">This entity will be able to store and match facial features.</p>
+                    </div>
+                  </TabsContent>
+                  <TabsContent value="text" className="mt-4">
+                    <div className="space-y-3">
+                      <div className="text-sm text-gray-600">
+                        <p>Create an entity with text-based data.</p>
+                        <p className="mt-2">This entity will store textual information and descriptions.</p>
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-gray-700">Text Content <span className="text-red-500">*</span></label>
+                        <Textarea
+                          value={textContent}
+                          onChange={(e) => setTextContent(e.target.value)}
+                          placeholder="Enter text content for this entity..."
+                          className="mt-1 w-full"
+                          rows={4}
+                          required
+                          data-test="entity-text-content"
+                        />
+                      </div>
+                    </div>
+                  </TabsContent>
+                  <TabsContent value="both" className="mt-4">
+                    <div className="space-y-3">
+                      <div className="text-sm text-gray-600">
+                        <p>Create an entity with both facial and text data.</p>
+                        <p className="mt-2">This entity will have the capability to store both facial features and textual information.</p>
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-gray-700">Text Content <span className="text-red-500">*</span></label>
+                        <Textarea
+                          value={textContent}
+                          onChange={(e) => setTextContent(e.target.value)}
+                          placeholder="Enter text content for this entity..."
+                          className="mt-1 w-full"
+                          rows={4}
+                          required
+                          data-test="entity-text-content-both"
+                        />
+                      </div>
+                    </div>
+                  </TabsContent>
+                </Tabs>
+                <DialogFooter className="mt-6">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setEntityModalOpen(false)}
                   >
                     Cancel
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
+                  </Button>
+                  <Button
+                    type="submit"
+                    onClick={handleCreateEntity}
+                    data-test="create-entity-button"
+                  >
+                    Create Entity
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
           
           <div className="max-h-40 overflow-y-auto space-y-1">
             {entities.slice(0, 10).map((entity) => (
               <div
                 key={entity.id}
-                className="flex justify-between items-center p-2 text-sm bg-gray-50 rounded"
+                className="flex justify-between items-center p-2 text-sm bg-white/30 backdrop-blur-sm rounded"
                 data-test="entity-item"
               >
-                <div>
+                <div className="flex items-center gap-2">
                   <span className="font-medium">{entity.id.slice(0, 8)}</span>
-                  <span className="ml-2 text-xs text-gray-600" data-test="entity-icons">
-                    {entity.type_facial_data_id && '👤'}
-                    {entity.type_text_data_id && '📝'}
+                  <span className="flex items-center gap-1" data-test="entity-icons">
+                    {entity.type_facial_data_id && <User className="h-3 w-3 text-gray-600" />}
+                    {entity.type_text_data_id && <FileText className="h-3 w-3 text-gray-600" />}
                   </span>
                 </div>
                 <button
@@ -179,7 +265,7 @@ export function DataPanel() {
           </div>
           
           {showCreateRelation && (
-            <div className="p-3 bg-gray-50 rounded mb-2">
+            <div className="p-3 bg-white/40 backdrop-blur-sm rounded mb-2">
               <div className="space-y-2">
                 <div>
                   <label className="text-xs text-gray-600">Subject Type</label>
@@ -216,7 +302,7 @@ export function DataPanel() {
                   <select
                     value={selectedSubject}
                     onChange={(e) => setSelectedSubject(e.target.value)}
-                    className="w-full px-2 py-1 text-sm border rounded"
+                    className="w-full px-2 py-1 text-sm bg-white/50 border border-gray-300/50 rounded backdrop-blur-sm"
                     data-test="relation-subject-select"
                   >
                     <option value="">Select {subjectType}...</option>
@@ -248,7 +334,7 @@ export function DataPanel() {
                     value={predicate}
                     onChange={(e) => setPredicate(e.target.value)}
                     placeholder="e.g., implies, contradicts, supports"
-                    className="w-full px-2 py-1 text-sm border rounded"
+                    className="w-full px-2 py-1 text-sm bg-white/50 border border-gray-300/50 rounded backdrop-blur-sm"
                     data-test="relation-predicate-input"
                   />
                 </div>
@@ -287,7 +373,7 @@ export function DataPanel() {
                   <select
                     value={selectedObject}
                     onChange={(e) => setSelectedObject(e.target.value)}
-                    className="w-full px-2 py-1 text-sm border rounded"
+                    className="w-full px-2 py-1 text-sm bg-white/50 border border-gray-300/50 rounded backdrop-blur-sm"
                     data-test="relation-object-select"
                   >
                     <option value="">Select {objectType}...</option>
@@ -335,7 +421,7 @@ export function DataPanel() {
             {relations.slice(0, 10).map((relation) => (
               <div
                 key={relation.id}
-                className="flex justify-between items-center p-2 text-sm bg-gray-50 rounded"
+                className="flex justify-between items-center p-2 text-sm bg-white/30 backdrop-blur-sm rounded"
               >
                 <div className="text-xs">
                   <span className="font-medium">

@@ -205,6 +205,54 @@ export function useRelations() {
   };
 }
 
+export function useEntityTypeData() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const getTextData = useCallback(async (id: string): Promise<EntityTypeTextData | null> => {
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/entity-types/text/${id}`);
+      if (!response.ok) {
+        if (response.status === 404) return null;
+        throw new Error('Failed to fetch text data');
+      }
+      const data = await response.json();
+      return data.textData;
+    } catch (err) {
+      setError(err as Error);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const getFacialData = useCallback(async (id: string): Promise<EntityTypeFacialData | null> => {
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/entity-types/facial/${id}`);
+      if (!response.ok) {
+        if (response.status === 404) return null;
+        throw new Error('Failed to fetch facial data');
+      }
+      const data = await response.json();
+      return data.facialData;
+    } catch (err) {
+      setError(err as Error);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  return {
+    getTextData,
+    getFacialData,
+    loading,
+    error
+  };
+}
+
 export function useAIAnalysis() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);

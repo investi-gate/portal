@@ -24,6 +24,7 @@ import { Entity, Relation } from '@/db/types';
 import { EntityScore } from '@/lib/ai-analysis';
 import { InvestigationNode, RelationEdge as RelationEdgeType } from '@/types/react-flow';
 import { calculateGraphLayout } from '@/utils/layout';
+import { getOptimalConnectionPoints, getRelationNodeConnectionPoints } from '@/utils/edge-utils';
 
 const nodeTypes = {
   entity: EntityNode,
@@ -79,24 +80,43 @@ export function InvestigationFlow({ onEntitySelect, onRelationSelect }: Investig
     setNodes(calculatedNodes);
   }, [calculatedNodes, setNodes]);
 
-  // Memoize edge calculations
+  // Memoize edge calculations - now depends on node positions
   const calculatedEdges = useMemo(() => {
     const newEdges: RelationEdgeType[] = [];
     
+    // Only calculate edges after nodes have been positioned
+    if (nodes.length === 0) return newEdges;
+    
+    // Create a map for quick node lookup
+    const nodeMap = new Map(nodes.map(node => [node.id, node]));
+    
     // Create edges from source to relation node and from relation node to target
     relations.forEach(relation => {
-      const source = relation.subject_entity_id || relation.subject_relation_id;
-      const target = relation.object_entity_id || relation.object_relation_id;
+      const sourceId = relation.subject_entity_id || relation.subject_relation_id;
+      const targetId = relation.object_entity_id || relation.object_relation_id;
       
-      if (!source || !target) return;
+      if (!sourceId || !targetId) return;
+      
+      const sourceNode = nodeMap.get(sourceId);
+      const relationNode = nodeMap.get(relation.id);
+      const targetNode = nodeMap.get(targetId);
+      
+      if (!sourceNode || !relationNode || !targetNode) return;
+      
+      // Calculate optimal connection points
+      const connectionPoints = getRelationNodeConnectionPoints(
+        sourceNode,
+        relationNode,
+        targetNode
+      );
       
       // Edge from source to relation node
       newEdges.push({
         id: `${relation.id}-source`,
-        source: source,
+        source: sourceId,
         target: relation.id,
-        sourcePosition: Position.Right,
-        targetPosition: Position.Top,
+        sourcePosition: connectionPoints.sourceToRelation.sourcePosition,
+        targetPosition: connectionPoints.sourceToRelation.targetPosition,
         type: 'relation',
         animated: false,
         style: {
@@ -109,9 +129,9 @@ export function InvestigationFlow({ onEntitySelect, onRelationSelect }: Investig
       newEdges.push({
         id: `${relation.id}-target`,
         source: relation.id,
-        target: target,
-        sourcePosition: Position.Bottom,
-        targetPosition: Position.Left,
+        target: targetId,
+        sourcePosition: connectionPoints.relationToTarget.sourcePosition,
+        targetPosition: connectionPoints.relationToTarget.targetPosition,
         type: 'relation',
         animated: false,
         style: {
@@ -122,7 +142,7 @@ export function InvestigationFlow({ onEntitySelect, onRelationSelect }: Investig
     });
     
     return newEdges;
-  }, [relations]);
+  }, [relations, nodes]);
 
   useEffect(() => {
     setEdges(calculatedEdges);

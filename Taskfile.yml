@@ -1,0 +1,55 @@
+version: '3'
+
+vars:
+  SESSION_NAME: investi-gate_portal
+  WINDOW_NAME: portal
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  dev:
+    desc: Run portal in tmux session
+    cmds:
+      - |
+        tmux new-session -d -s {{.SESSION_NAME}} -n {{.WINDOW_NAME}} 'npm run dev'
+
+  attach:
+    desc: Attach to portal tmux session
+    cmds:
+      - |
+        tmux attach-session -t {{.SESSION_NAME}}
+
+  stop:
+    desc: Stop portal tmux session
+    cmds:
+      - |
+        tmux kill-session -t {{.SESSION_NAME}} || true
+
+  logs:
+    desc: Show portal logs from tmux
+    cmds:
+      - |
+        tmux capture-pane -t {{.SESSION_NAME}}:{{.WINDOW_NAME}} -p
+
+  install:
+    desc: Install dependencies
+    cmds:
+      - npm install
+
+  build:
+    desc: Build the Next.js application
+    cmds:
+      - npm run build
+
+  lint:
+    desc: Run ESLint
+    cmds:
+      - npm run lint
+
+  clean:
+    desc: Clean build artifacts and dependencies
+    cmds:
+      - rm -rf .next node_modules

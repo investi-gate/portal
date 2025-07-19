@@ -6,8 +6,9 @@ export interface EntityTypeFacialData {
 
 export interface EntityTypeTextData {
   id: string;
-  created_at: Date | null;
-  updated_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+  content: string;
 }
 
 export interface Entity {

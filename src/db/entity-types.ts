@@ -68,14 +68,15 @@ export async function dbDeleteEntityTypeFacialData(
 }
 
 export async function dbCreateEntityTypeTextData(
-  db: DatabaseClient
+  db: DatabaseClient,
+  content: string = ''
 ): Promise<EntityTypeTextData> {
   const query = `
-    INSERT INTO entity_type__text_data DEFAULT VALUES
-    RETURNING id, created_at, updated_at
+    INSERT INTO entity_type__text_data (content) VALUES ($1)
+    RETURNING id, created_at, updated_at, content
   `;
 
-  const result = await db.query(query);
+  const result = await db.query(query, [content]);
   return result.rows[0];
 }
 
@@ -84,7 +85,7 @@ export async function dbGetEntityTypeTextData(
   id: string
 ): Promise<EntityTypeTextData | null> {
   const query = `
-    SELECT id, created_at, updated_at
+    SELECT id, created_at, updated_at, content
     FROM entity_type__text_data
     WHERE id = $1
   `;
@@ -99,7 +100,7 @@ export async function dbGetAllEntityTypeTextData(
   offset = 0
 ): Promise<EntityTypeTextData[]> {
   const query = `
-    SELECT id, created_at, updated_at
+    SELECT id, created_at, updated_at, content
     FROM entity_type__text_data
     ORDER BY created_at DESC
     LIMIT $1 OFFSET $2
@@ -111,16 +112,17 @@ export async function dbGetAllEntityTypeTextData(
 
 export async function dbUpdateEntityTypeTextData(
   db: DatabaseClient,
-  id: string
+  id: string,
+  content: string
 ): Promise<EntityTypeTextData | null> {
   const query = `
     UPDATE entity_type__text_data
-    SET updated_at = CURRENT_TIMESTAMP
+    SET updated_at = CURRENT_TIMESTAMP, content = $2
     WHERE id = $1
-    RETURNING id, created_at, updated_at
+    RETURNING id, created_at, updated_at, content
   `;
 
-  const result = await db.query(query, [id]);
+  const result = await db.query(query, [id, content]);
   return result.rows[0] || null;
 }
 

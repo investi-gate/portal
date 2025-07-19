@@ -26,7 +26,7 @@ export function AnalysisPanel() {
     <div className="space-y-2">
       <h4 className="font-medium text-sm text-gray-700 mb-2">Most Important Entities</h4>
       {scores.slice(0, 10).map((score) => (
-        <div key={score.entity.id} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+        <div key={score.entity.id} className="flex justify-between items-center p-2 bg-white/30 backdrop-blur-sm rounded">
           <div>
             <div className="text-sm font-medium">Entity {score.entity.id.slice(0, 8)}</div>
             <div className="text-xs text-gray-600">
@@ -45,7 +45,7 @@ export function AnalysisPanel() {
     <div className="space-y-2">
       <h4 className="font-medium text-sm text-gray-700 mb-2">Relationship Patterns</h4>
       {patterns.map((pattern) => (
-        <div key={pattern.predicate} className="p-2 bg-gray-50 rounded">
+        <div key={pattern.predicate} className="p-2 bg-white/30 backdrop-blur-sm rounded">
           <div className="flex justify-between items-center">
             <div className="text-sm font-medium">{pattern.predicate}</div>
             <div className="text-sm text-gray-600">{pattern.count} occurrences</div>
@@ -62,7 +62,7 @@ export function AnalysisPanel() {
     <div className="space-y-2">
       <h4 className="font-medium text-sm text-gray-700 mb-2">Entity Clusters</h4>
       {clusters.map((cluster) => (
-        <div key={cluster.id} className="p-3 bg-gray-50 rounded">
+        <div key={cluster.id} className="p-3 bg-white/30 backdrop-blur-sm rounded">
           <div className="flex justify-between items-center mb-1">
             <div className="text-sm font-medium">{cluster.id}</div>
             <div className="text-xs text-gray-600">
@@ -86,7 +86,7 @@ export function AnalysisPanel() {
     <div className="space-y-2">
       <h4 className="font-medium text-sm text-gray-700 mb-2">Suggested Relations</h4>
       {suggestions.map((suggestion, index) => (
-        <div key={index} className="p-3 bg-gray-50 rounded">
+        <div key={index} className="p-3 bg-white/30 backdrop-blur-sm rounded">
           <div className="flex justify-between items-center">
             <div className="text-sm">
               <span className="font-medium">{suggestion.subjectId.slice(0, 8)}</span>
@@ -106,7 +106,7 @@ export function AnalysisPanel() {
   );
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-4">
+    <div className="bg-white/80 backdrop-blur-md rounded-lg p-4 border border-gray-200">
       <h3 className="text-lg font-semibold mb-4">AI Analysis</h3>
       
       <div className="flex gap-2 mb-4 border-b">

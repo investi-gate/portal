@@ -26,7 +26,7 @@ export function AISearchPanel({ onEntitySelect }: AISearchPanelProps) {
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-4" data-test="ai-search-panel">
+    <div className="bg-white/80 backdrop-blur-md rounded-lg p-4 border border-gray-200" data-test="ai-search-panel">
       <h3 className="text-lg font-semibold mb-4">AI-Powered Search</h3>
       
       <form onSubmit={handleSearch} className="mb-4" data-test="search-form">
@@ -36,7 +36,7 @@ export function AISearchPanel({ onEntitySelect }: AISearchPanelProps) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search entities, relationships, types..."
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="flex-1 px-3 py-2 bg-white/50 border border-gray-300/50 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 backdrop-blur-sm"
             data-test="search-input"
           />
           <button
@@ -56,7 +56,7 @@ export function AISearchPanel({ onEntitySelect }: AISearchPanelProps) {
           {results.map((entity) => (
             <div
               key={entity.id}
-              className="p-3 border border-gray-200 rounded-md hover:bg-gray-50 cursor-pointer"
+              className="p-3 bg-white/40 border border-gray-200/50 rounded-md hover:bg-white/60 cursor-pointer backdrop-blur-sm transition-all"
               onClick={() => onEntitySelect?.(entity)}
               data-test="search-result-item"
             >

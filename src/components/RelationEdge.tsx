@@ -25,17 +25,19 @@ export function RelationEdge({
   return (
     <>
       <BaseEdge id={id} path={edgePath} markerEnd={markerEnd} />
-      <EdgeLabelRenderer>
-        <div
-          style={{
-            transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
-          }}
-          className="relation-edge-label nodrag nopan"
-          data-test={`relation-edge-label-${id}`}
-        >
-          {data?.label || ''}
-        </div>
-      </EdgeLabelRenderer>
+      {data?.label && (
+        <EdgeLabelRenderer>
+          <div
+            style={{
+              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+            }}
+            className="relation-edge-label nodrag nopan"
+            data-test={`relation-edge-label-${id}`}
+          >
+            {data.label}
+          </div>
+        </EdgeLabelRenderer>
+      )}
     </>
   );
 }
