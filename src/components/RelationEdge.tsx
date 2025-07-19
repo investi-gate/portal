@@ -1,5 +1,6 @@
 import React from 'react';
 import { EdgeProps, getBezierPath, EdgeLabelRenderer, BaseEdge } from '@xyflow/react';
+import { RelationEdgeData } from '@/types/react-flow';
 
 export function RelationEdge({
   id,
@@ -11,7 +12,7 @@ export function RelationEdge({
   targetPosition,
   data,
   markerEnd,
-}: EdgeProps) {
+}: EdgeProps<RelationEdgeData>) {
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,
     sourceY,
@@ -27,16 +28,10 @@ export function RelationEdge({
       <EdgeLabelRenderer>
         <div
           style={{
-            position: 'absolute',
             transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
-            background: 'white',
-            padding: '2px 6px',
-            borderRadius: '4px',
-            fontSize: '12px',
-            fontWeight: 500,
-            boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
           }}
-          className="nodrag nopan"
+          className="relation-edge-label nodrag nopan"
+          data-test={`relation-edge-label-${id}`}
         >
           {data?.label || 'relates-to'}
         </div>

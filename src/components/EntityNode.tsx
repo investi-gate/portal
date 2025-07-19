@@ -1,26 +1,11 @@
 import React from 'react';
-import { Handle, Position } from '@xyflow/react';
-import { Entity, Relation } from '@/db/types';
+import { Handle, Position, NodeProps } from '@xyflow/react';
+import { EntityNodeData } from '@/types/react-flow';
 
-interface EntityNodeProps {
-  data: {
-    entity?: Entity | null;
-    relation?: Relation;
-    label: string;
-    importance?: number;
-    isRelationNode?: boolean;
-  };
-}
-
-export function EntityNode({ data }: EntityNodeProps) {
-  const { entity, relation, label, importance = 0, isRelationNode = false } = data;
+export function EntityNode({ data }: NodeProps<EntityNodeData>) {
+  const { entity, label, importance = 0 } = data;
   
   const getNodeColor = () => {
-    if (isRelationNode) {
-      return 'bg-amber-100 border-amber-500';
-    }
-    if (!entity) return 'bg-gray-500';
-    
     if (entity.type_facial_data_id && entity.type_text_data_id) {
       return 'bg-purple-500';
     } else if (entity.type_facial_data_id) {
@@ -32,9 +17,6 @@ export function EntityNode({ data }: EntityNodeProps) {
   };
 
   const getImportanceSize = () => {
-    if (isRelationNode) {
-      return 140; // Fixed size for relation nodes
-    }
     const baseSize = 120;
     const scale = 1 + (importance * 0.3); // Reduced scaling factor
     return baseSize * scale;
@@ -44,39 +26,55 @@ export function EntityNode({ data }: EntityNodeProps) {
 
   return (
     <div
-      className={`${getNodeColor()} rounded-lg shadow-lg p-3 ${isRelationNode ? 'text-amber-900 border-2 border-dashed' : 'text-white'} relative`}
+      className={`${getNodeColor()} rounded-lg shadow-lg p-3 text-white relative`}
       style={{ width: size, minHeight: 70 }}
+      data-test={`entity-node-${entity.id}`}
     >
-      <Handle type="target" position={Position.Top} id="top" className="w-2 h-2" />
-      <Handle type="target" position={Position.Left} id="left" className="w-2 h-2" />
+      <Handle 
+        type="target" 
+        position={Position.Top} 
+        id="top" 
+        className="w-2 h-2" 
+        data-test="entity-node-handle-target-top"
+      />
+      <Handle 
+        type="target" 
+        position={Position.Left} 
+        id="left" 
+        className="w-2 h-2" 
+        data-test="entity-node-handle-target-left"
+      />
       
-      <div className="text-xs font-semibold mb-1 truncate">{label}</div>
+      <div className="text-xs font-semibold mb-1 truncate" data-test="entity-node-label">
+        {label}
+      </div>
       
-      {isRelationNode && relation ? (
-        <div className="text-xs opacity-80">
-          <div>🔗 Relation</div>
-          <div className="mt-1">
-            {relation.subject_entity_id ? 'E' : 'R'}:{(relation.subject_entity_id || relation.subject_relation_id)?.slice(0, 4)}
-            {' → '}
-            {relation.object_entity_id ? 'E' : 'R'}:{(relation.object_entity_id || relation.object_relation_id)?.slice(0, 4)}
-          </div>
-        </div>
-      ) : entity ? (
-        <div className="text-xs opacity-80">
-          {entity.type_facial_data_id && entity.type_text_data_id && '👤 + 📝'}
-          {entity.type_facial_data_id && !entity.type_text_data_id && '👤 Facial'}
-          {!entity.type_facial_data_id && entity.type_text_data_id && '📝 Text'}
-        </div>
-      ) : null}
+      <div className="text-xs opacity-80" data-test="entity-node-type">
+        {entity.type_facial_data_id && entity.type_text_data_id && '👤 + 📝'}
+        {entity.type_facial_data_id && !entity.type_text_data_id && '👤 Facial'}
+        {!entity.type_facial_data_id && entity.type_text_data_id && '📝 Text'}
+      </div>
       
-      {importance > 0 && !isRelationNode && (
-        <div className="text-xs mt-1 opacity-70">
+      {importance > 0 && (
+        <div className="text-xs mt-1 opacity-70" data-test="entity-node-importance">
           Importance: {(importance * 100).toFixed(0)}%
         </div>
       )}
       
-      <Handle type="source" position={Position.Bottom} id="bottom" className="w-2 h-2" />
-      <Handle type="source" position={Position.Right} id="right" className="w-2 h-2" />
+      <Handle 
+        type="source" 
+        position={Position.Bottom} 
+        id="bottom" 
+        className="w-2 h-2" 
+        data-test="entity-node-handle-source-bottom"
+      />
+      <Handle 
+        type="source" 
+        position={Position.Right} 
+        id="right" 
+        className="w-2 h-2" 
+        data-test="entity-node-handle-source-right"
+      />
     </div>
   );
 }

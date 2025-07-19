@@ -2,12 +2,7 @@
 
 import React from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
-import { Relation } from '@/db/types';
-
-export interface RelationNodeData {
-  relation: Relation;
-  label: string;
-}
+import { RelationNodeData } from '@/types/react-flow';
 
 export function RelationNode({ data, selected }: NodeProps<RelationNodeData>) {
   return (
