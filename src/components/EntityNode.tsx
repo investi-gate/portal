@@ -47,7 +47,8 @@ export function EntityNode({ data }: EntityNodeProps) {
       className={`${getNodeColor()} rounded-lg shadow-lg p-3 ${isRelationNode ? 'text-amber-900 border-2 border-dashed' : 'text-white'} relative`}
       style={{ width: size, minHeight: 70 }}
     >
-      <Handle type="target" position={Position.Top} className="w-2 h-2" />
+      <Handle type="target" position={Position.Top} id="top" className="w-2 h-2" />
+      <Handle type="target" position={Position.Left} id="left" className="w-2 h-2" />
       
       <div className="text-xs font-semibold mb-1 truncate">{label}</div>
       
@@ -74,7 +75,8 @@ export function EntityNode({ data }: EntityNodeProps) {
         </div>
       )}
       
-      <Handle type="source" position={Position.Bottom} className="w-2 h-2" />
+      <Handle type="source" position={Position.Bottom} id="bottom" className="w-2 h-2" />
+      <Handle type="source" position={Position.Right} id="right" className="w-2 h-2" />
     </div>
   );
 }

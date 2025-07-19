@@ -14,10 +14,12 @@ import {
   Node,
   BackgroundVariant,
   MarkerType,
+  Position,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
 import { EntityNode } from './EntityNode';
+import { RelationNode } from './RelationNode';
 import { RelationEdge } from './RelationEdge';
 import { useEntities, useRelations, useAIAnalysis } from '@/hooks/useDatabase';
 import { Entity, Relation } from '@/db/types';
@@ -25,7 +27,7 @@ import { EntityScore } from '@/lib/ai-analysis';
 
 const nodeTypes = {
   entity: EntityNode,
-  relation: EntityNode, // Reuse EntityNode for relation nodes with different styling
+  relation: RelationNode,
 };
 
 const edgeTypes = {
@@ -49,18 +51,11 @@ export function InvestigationFlow({ onEntitySelect, onRelationSelect }: Investig
   // Calculate layout positions for all nodes (entities and relation nodes)
   const calculateLayout = useCallback((entities: Entity[], relations: Relation[], scores: EntityScore[]) => {
     const scoreMap = new Map(scores.map(s => [s.entity.id, s]));
-    const viewportWidth = 1200;
-    const viewportHeight = 800;
     
-    // Find which relations need to be nodes
+    // ALL relations will be displayed as nodes
     const relationIdsAsNodes = new Set<string>();
     relations.forEach(relation => {
-      if (relation.subject_relation_id) {
-        relationIdsAsNodes.add(relation.subject_relation_id);
-      }
-      if (relation.object_relation_id) {
-        relationIdsAsNodes.add(relation.object_relation_id);
-      }
+      relationIdsAsNodes.add(relation.id);
     });
     
     // Create a unified node list containing both entities and relation nodes
@@ -73,7 +68,7 @@ export function InvestigationFlow({ onEntitySelect, onRelationSelect }: Investig
       nodeTypes.set(entity.id, 'entity');
     });
     
-    // Add relation nodes
+    // Add all relations as nodes
     relationIdsAsNodes.forEach(relationId => {
       allNodeIds.add(relationId);
       nodeTypes.set(relationId, 'relation');
@@ -85,14 +80,21 @@ export function InvestigationFlow({ onEntitySelect, onRelationSelect }: Investig
       connections.set(nodeId, new Set());
     });
     
-    // Build connections including relation nodes
+    // Build connections: Entity/Relation -> Relation -> Entity/Relation
     relations.forEach(relation => {
       const source = relation.subject_entity_id || relation.subject_relation_id;
       const target = relation.object_entity_id || relation.object_relation_id;
       
-      if (source && target && connections.has(source) && connections.has(target)) {
-        connections.get(source)!.add(target);
-        connections.get(target)!.add(source);
+      // Connect source to relation node
+      if (source && connections.has(source)) {
+        connections.get(source)!.add(relation.id);
+        connections.get(relation.id)!.add(source);
+      }
+      
+      // Connect relation node to target
+      if (target && connections.has(target)) {
+        connections.get(relation.id)!.add(target);
+        connections.get(target)!.add(relation.id);
       }
     });
     
@@ -133,12 +135,10 @@ export function InvestigationFlow({ onEntitySelect, onRelationSelect }: Investig
         visited.add(nodeId);
         
         let maxChildDepth = depth;
-        relations.forEach(relation => {
-          const source = relation.subject_entity_id || relation.subject_relation_id;
-          const target = relation.object_entity_id || relation.object_relation_id;
-          
-          if (source === nodeId && target && component.includes(target)) {
-            const childDepth = calculateDepth(target, visited, depth + 1);
+        // For entities/relations connected via relation nodes
+        connections.get(nodeId)?.forEach(connectedId => {
+          if (component.includes(connectedId)) {
+            const childDepth = calculateDepth(connectedId, visited, depth + 1);
             maxChildDepth = Math.max(maxChildDepth, childDepth);
           }
         });
@@ -147,27 +147,25 @@ export function InvestigationFlow({ onEntitySelect, onRelationSelect }: Investig
         return maxChildDepth;
       };
       
-      // Find root nodes (nodes with no incoming edges within component)
+      // Find root nodes (entity nodes with no incoming connections within component)
       const roots = component.filter(nodeId => {
-        return !relations.some(r => {
-          const target = r.object_entity_id || r.object_relation_id;
-          const source = r.subject_entity_id || r.subject_relation_id;
-          return target === nodeId && source && component.includes(source);
+        // Only consider entity nodes as potential roots
+        if (nodeTypes.get(nodeId) !== 'entity') return false;
+        
+        // Check if any other node in the component connects to this one
+        return !Array.from(connections.entries()).some(([otherId, otherConnections]) => {
+          return otherId !== nodeId && component.includes(otherId) && otherConnections.has(nodeId);
         });
       });
       
-      // If no clear roots, use nodes with most outgoing connections
-      const effectiveRoots = roots.length > 0 ? roots : component.sort((a, b) => {
-        const aOutgoing = relations.filter(r => {
-          const source = r.subject_entity_id || r.subject_relation_id;
-          return source === a;
-        }).length;
-        const bOutgoing = relations.filter(r => {
-          const source = r.subject_entity_id || r.subject_relation_id;
-          return source === b;
-        }).length;
-        return bOutgoing - aOutgoing;
-      }).slice(0, Math.max(1, Math.ceil(component.length / 4)));
+      // If no clear roots, use entity nodes with most outgoing connections
+      const effectiveRoots = roots.length > 0 ? roots : component
+        .filter(nodeId => nodeTypes.get(nodeId) === 'entity')
+        .sort((a, b) => {
+          const aOutgoing = connections.get(a)?.size || 0;
+          const bOutgoing = connections.get(b)?.size || 0;
+          return bOutgoing - aOutgoing;
+        }).slice(0, Math.max(1, Math.ceil(component.length / 4)));
       
       // Calculate depths from roots
       effectiveRoots.forEach(root => {
@@ -184,23 +182,34 @@ export function InvestigationFlow({ onEntitySelect, onRelationSelect }: Investig
         levels.get(depth)!.push(nodeId);
       });
       
-      // Position nodes level by level
-      const levelHeight = 150;
+      // Position nodes level by level with better spacing for relation nodes
+      const levelHeight = 200;
       const baseY = 100;
       
       levels.forEach((nodesInLevel, level) => {
         const startX = currentX + (component.length > 3 ? 0 : 50);
         
-        nodesInLevel.forEach((nodeId, index) => {
-          const x = startX + (index * 150) + (Math.random() - 0.5) * 30;
-          const y = baseY + (level * levelHeight) + (Math.random() - 0.5) * 20;
-          
+        // Separate entity and relation nodes for better layout
+        const entityNodes = nodesInLevel.filter(id => nodeTypes.get(id) === 'entity');
+        const relationNodes = nodesInLevel.filter(id => nodeTypes.get(id) === 'relation');
+        
+        // Position entity nodes first
+        entityNodes.forEach((nodeId, index) => {
+          const x = startX + (index * 200) + (Math.random() - 0.5) * 20;
+          const y = baseY + (level * levelHeight);
+          nodePositions.set(nodeId, { x, y });
+        });
+        
+        // Position relation nodes between entities
+        relationNodes.forEach((nodeId, index) => {
+          const x = startX + (index * 200) + 100 + (Math.random() - 0.5) * 20;
+          const y = baseY + (level * levelHeight) + 80;
           nodePositions.set(nodeId, { x, y });
         });
       });
       
       // Update currentX for next component
-      const componentWidth = Math.max(...Array.from(levels.values()).map(l => l.length)) * 150;
+      const componentWidth = Math.max(...Array.from(levels.values()).map(l => l.length)) * 200;
       currentX += componentWidth + componentSpacing;
     });
     
@@ -225,28 +234,19 @@ export function InvestigationFlow({ onEntitySelect, onRelationSelect }: Investig
       });
     });
     
-    // Add relation nodes
-    relationIdsAsNodes.forEach(relationId => {
-      const relation = relations.find(r => r.id === relationId);
-      if (relation) {
-        const position = nodePositions.get(relationId) || { x: 100, y: 100 };
-        
-        nodes.push({
-          id: relationId,
-          type: 'relation',
-          position,
-          data: {
-            entity: null,
-            relation: relation,
-            label: `${relation.predicate}`,
-            isRelationNode: true,
-          },
-          style: {
-            background: '#fef3c7',
-            border: '2px dashed #f59e0b',
-          },
-        });
-      }
+    // Add all relations as nodes
+    relations.forEach(relation => {
+      const position = nodePositions.get(relation.id) || { x: 100, y: 100 };
+      
+      nodes.push({
+        id: relation.id,
+        type: 'relation',
+        position,
+        data: {
+          relation: relation,
+          label: relation.predicate || 'relates-to',
+        },
+      });
     });
     
     return nodes;
@@ -279,39 +279,45 @@ export function InvestigationFlow({ onEntitySelect, onRelationSelect }: Investig
   }, [entities, relations, entityScores, calculateLayout, setNodes]);
 
   useEffect(() => {
-    const newEdges: Edge[] = relations
-      .map(relation => {
-        // Determine source and target
-        const source = relation.subject_entity_id || relation.subject_relation_id;
-        const target = relation.object_entity_id || relation.object_relation_id;
-        
-        if (!source || !target) return null;
-        
-        // Check if this is a meta-relation (involves other relations)
-        const isMetaRelation = relation.subject_relation_id || relation.object_relation_id;
-        
-        return {
-          id: relation.id,
-          source: source,
-          target: target,
-          type: 'relation',
-          data: { 
-            label: relation.predicate,
-            isMetaRelation,
-          },
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
-            width: 20,
-            height: 20,
-          },
-          style: isMetaRelation ? {
-            stroke: '#f59e0b',
-            strokeWidth: 2,
-            strokeDasharray: '5 5',
-          } : undefined,
-        };
-      })
-      .filter(edge => edge !== null) as Edge[];
+    const newEdges: Edge[] = [];
+    
+    // Create edges from source to relation node and from relation node to target
+    relations.forEach(relation => {
+      const source = relation.subject_entity_id || relation.subject_relation_id;
+      const target = relation.object_entity_id || relation.object_relation_id;
+      
+      if (!source || !target) return;
+      
+      // Edge from source to relation node
+      newEdges.push({
+        id: `${relation.id}-source`,
+        source: source,
+        target: relation.id,
+        sourcePosition: Position.Right,
+        targetPosition: Position.Top,
+        type: 'smoothstep',
+        animated: false,
+        style: {
+          stroke: '#9ca3af',
+          strokeWidth: 2,
+        },
+      });
+      
+      // Edge from relation node to target
+      newEdges.push({
+        id: `${relation.id}-target`,
+        source: relation.id,
+        target: target,
+        sourcePosition: Position.Bottom,
+        targetPosition: Position.Left,
+        type: 'smoothstep',
+        animated: false,
+        style: {
+          stroke: '#9ca3af',
+          strokeWidth: 2,
+        },
+      });
+    });
     
     setEdges(newEdges);
   }, [relations, setEdges]);
@@ -330,11 +336,9 @@ export function InvestigationFlow({ onEntitySelect, onRelationSelect }: Investig
   }, [onEntitySelect, onRelationSelect]);
 
   const onEdgeClick = useCallback((event: React.MouseEvent, edge: Edge) => {
-    const relation = relations.find(r => r.id === edge.id);
-    if (relation && onRelationSelect) {
-      onRelationSelect(relation);
-    }
-  }, [relations, onRelationSelect]);
+    // Edges now just connect nodes, they don't represent relations anymore
+    // Relations are clicked via their nodes
+  }, []);
 
   if (entitiesLoading || relationsLoading) {
     return (
