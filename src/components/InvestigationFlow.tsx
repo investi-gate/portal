@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ReactFlow,
   MiniMap,
@@ -45,25 +45,41 @@ export function InvestigationFlow({ onEntitySelect, onRelationSelect }: Investig
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [entityScores, setEntityScores] = useState<EntityScore[]>([]);
-  const [relationNodes, setRelationNodes] = useState<Node[]>([]);
 
   // Calculate layout positions for entities
   const calculateLayout = useCallback((entities: Entity[], scores: EntityScore[]) => {
     const scoreMap = new Map(scores.map(s => [s.entity.id, s]));
-    const centerX = 400;
-    const centerY = 300;
-    const radius = 300;
+    const viewportWidth = 1200;
+    const viewportHeight = 800;
+    const centerX = viewportWidth / 2;
+    const centerY = viewportHeight / 2;
+    const minRadius = 200;
+    const maxRadius = 350;
     
-    return entities.map((entity, index) => {
+    // Sort entities by importance
+    const sortedEntities = [...entities].sort((a, b) => {
+      const scoreA = scoreMap.get(a.id)?.score || 0;
+      const scoreB = scoreMap.get(b.id)?.score || 0;
+      return scoreB - scoreA;
+    });
+    
+    return sortedEntities.map((entity, index) => {
       const score = scoreMap.get(entity.id);
       const importance = score?.score || 0;
       
-      // Position more important nodes closer to center
-      const distanceFromCenter = radius * (1 - importance);
-      const angle = (index / entities.length) * 2 * Math.PI;
+      // Use a spiral layout for better distribution
+      const goldenAngle = Math.PI * (3 - Math.sqrt(5)); // Golden angle in radians
+      const angle = index * goldenAngle;
       
-      const x = centerX + distanceFromCenter * Math.cos(angle);
-      const y = centerY + distanceFromCenter * Math.sin(angle);
+      // Increase radius based on index to create spiral
+      const radiusGrowth = (maxRadius - minRadius) / entities.length;
+      const radius = minRadius + (index * radiusGrowth);
+      
+      // Apply importance-based adjustment
+      const adjustedRadius = radius * (0.7 + 0.3 * (1 - importance));
+      
+      const x = centerX + adjustedRadius * Math.cos(angle);
+      const y = centerY + adjustedRadius * Math.sin(angle);
       
       return {
         id: entity.id,
@@ -118,13 +134,27 @@ export function InvestigationFlow({ onEntitySelect, onRelationSelect }: Investig
     
     // Create nodes for relations that are referenced
     const relationNodesList: Node[] = [];
+    const viewportWidth = 1200;
+    const relationAreaStartX = viewportWidth - 400; // Right side of viewport
+    const relationAreaStartY = 100;
+    const nodeSpacingX = 180;
+    const nodeSpacingY = 120;
+    const nodesPerRow = 2;
+    
     relationIdsAsNodes.forEach(relationId => {
       const relation = relations.find(r => r.id === relationId);
       if (relation) {
-        // Position relation nodes in a different area
+        // Position relation nodes in a grid on the right side
         const index = relationNodesList.length;
-        const x = 700 + (index % 3) * 150;
-        const y = 100 + Math.floor(index / 3) * 150;
+        const row = Math.floor(index / nodesPerRow);
+        const col = index % nodesPerRow;
+        
+        // Add some variation to prevent perfect grid alignment
+        const xVariation = (Math.random() - 0.5) * 20;
+        const yVariation = (Math.random() - 0.5) * 20;
+        
+        const x = relationAreaStartX + (col * nodeSpacingX) + xVariation;
+        const y = relationAreaStartY + (row * nodeSpacingY) + yVariation;
         
         relationNodesList.push({
           id: relationId,
@@ -145,7 +175,6 @@ export function InvestigationFlow({ onEntitySelect, onRelationSelect }: Investig
     });
     
     allNodes.push(...relationNodesList);
-    setRelationNodes(relationNodesList);
     setNodes(allNodes);
   }, [entities, relations, entityScores, calculateLayout, setNodes]);
 
@@ -227,10 +256,25 @@ export function InvestigationFlow({ onEntitySelect, onRelationSelect }: Investig
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
       fitView
+      fitViewOptions={{
+        padding: 0.2,
+        includeHiddenNodes: false,
+      }}
+      minZoom={0.1}
+      maxZoom={2}
+      defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
       data-test="react-flow"
     >
       <Controls data-test="flow-controls" />
-      <MiniMap data-test="flow-minimap" />
+      <MiniMap 
+        data-test="flow-minimap"
+        style={{
+          height: 120,
+          width: 160,
+        }}
+        zoomable
+        pannable
+      />
       <Background variant={BackgroundVariant.Dots} gap={12} size={1} />
     </ReactFlow>
   );

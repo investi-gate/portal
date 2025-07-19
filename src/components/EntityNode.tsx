@@ -32,8 +32,11 @@ export function EntityNode({ data }: EntityNodeProps) {
   };
 
   const getImportanceSize = () => {
-    const baseSize = 150;
-    const scale = 1 + (importance * 0.5);
+    if (isRelationNode) {
+      return 140; // Fixed size for relation nodes
+    }
+    const baseSize = 120;
+    const scale = 1 + (importance * 0.3); // Reduced scaling factor
     return baseSize * scale;
   };
 
@@ -41,12 +44,12 @@ export function EntityNode({ data }: EntityNodeProps) {
 
   return (
     <div
-      className={`${getNodeColor()} rounded-lg shadow-lg p-4 ${isRelationNode ? 'text-amber-900 border-2 border-dashed' : 'text-white'} relative`}
-      style={{ width: size, minHeight: 80 }}
+      className={`${getNodeColor()} rounded-lg shadow-lg p-3 ${isRelationNode ? 'text-amber-900 border-2 border-dashed' : 'text-white'} relative`}
+      style={{ width: size, minHeight: 70 }}
     >
-      <Handle type="target" position={Position.Top} className="w-3 h-3" />
+      <Handle type="target" position={Position.Top} className="w-2 h-2" />
       
-      <div className="text-sm font-semibold mb-1">{label}</div>
+      <div className="text-xs font-semibold mb-1 truncate">{label}</div>
       
       {isRelationNode && relation ? (
         <div className="text-xs opacity-80">
@@ -71,7 +74,7 @@ export function EntityNode({ data }: EntityNodeProps) {
         </div>
       )}
       
-      <Handle type="source" position={Position.Bottom} className="w-3 h-3" />
+      <Handle type="source" position={Position.Bottom} className="w-2 h-2" />
     </div>
   );
 }
