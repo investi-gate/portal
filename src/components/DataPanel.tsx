@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useEntities, useRelations } from '@/hooks/useDatabase';
 import {
   Dialog,
@@ -16,7 +16,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { User, FileText, Image, Upload, Plus, Link } from 'lucide-react';
 
-export function DataPanel() {
+interface DataPanelProps {
+  preselectedEntity?: string;
+  preselectedRelation?: string;
+  preselectedAsSubject?: boolean;
+  onOpen?: () => void;
+}
+
+export function DataPanel({ preselectedEntity, preselectedRelation, preselectedAsSubject = true, onOpen }: DataPanelProps) {
   const { entities, createEntity, deleteEntity } = useEntities();
   const { relations, createRelation, deleteRelation } = useRelations();
   const [modalOpen, setModalOpen] = useState(false);
@@ -160,13 +167,20 @@ export function DataPanel() {
       });
       
       setModalOpen(false);
-      setEntityType('facial'); // Reset to default
-      setTextContent(''); // Reset text content
-      setImageMediaId(''); // Reset image fields
+      // Reset all form state
+      setActiveTab('entity');
+      setEntityType('facial');
+      setTextContent('');
+      setImageMediaId('');
       setImageCaption('');
       setImageAltText('');
       setSelectedFile(null);
       setUploadError('');
+      setSelectedSubject('');
+      setSelectedObject('');
+      setPredicate('');
+      setSubjectType('entity');
+      setObjectType('entity');
     } catch (error) {
       console.error('Failed to create entity:', error);
     }
@@ -197,6 +211,15 @@ export function DataPanel() {
       await createRelation(relationData);
       
       setModalOpen(false);
+      // Reset all form state
+      setActiveTab('entity');
+      setEntityType('facial');
+      setTextContent('');
+      setImageMediaId('');
+      setImageCaption('');
+      setImageAltText('');
+      setSelectedFile(null);
+      setUploadError('');
       setSelectedSubject('');
       setSelectedObject('');
       setPredicate('');
@@ -215,13 +238,58 @@ export function DataPanel() {
     }
   };
 
+  // Handle dialog open/close with preselected values
+  const handleDialogOpenChange = (open: boolean) => {
+    if (open && (preselectedEntity || preselectedRelation)) {
+      // Set preselected values when opening
+      setActiveTab('relation');
+      
+      if (preselectedEntity) {
+        if (preselectedAsSubject) {
+          setSubjectType('entity');
+          setSelectedSubject(preselectedEntity);
+        } else {
+          setObjectType('entity');
+          setSelectedObject(preselectedEntity);
+        }
+      } else if (preselectedRelation) {
+        if (preselectedAsSubject) {
+          setSubjectType('relation');
+          setSelectedSubject(preselectedRelation);
+        } else {
+          setObjectType('relation');
+          setSelectedObject(preselectedRelation);
+        }
+      }
+    } else if (!open) {
+      // Reset all form state when closing
+      setActiveTab('entity');
+      setEntityType('facial');
+      setTextContent('');
+      setImageMediaId('');
+      setImageCaption('');
+      setImageAltText('');
+      setSelectedFile(null);
+      setUploadError('');
+      setSelectedSubject('');
+      setSelectedObject('');
+      setPredicate('');
+      setSubjectType('entity');
+      setObjectType('entity');
+    }
+    setModalOpen(open);
+  };
+
   return (
-    <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+    <Dialog open={modalOpen} onOpenChange={handleDialogOpenChange}>
       <DialogTrigger asChild>
         <button
           data-test="add-button"
           className="h-10 w-10 flex items-center justify-center bg-black/70 backdrop-blur-sm text-white rounded-lg hover:bg-black/80 transition-colors"
           title="Add Entity or Relation"
+          onClick={() => {
+            if (onOpen) onOpen();
+          }}
         >
           <Plus className="h-5 w-5" />
         </button>

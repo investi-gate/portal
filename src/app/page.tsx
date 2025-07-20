@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { InvestigationFlow } from '@/components/InvestigationFlow';
 import { AISearchPanel } from '@/components/AISearchPanel';
 import { DataPanel } from '@/components/DataPanel';
+import { Plus } from 'lucide-react';
 import { Entity, Relation, EntityTypeTextData } from '@/db/types';
 import { useEntityTypeData } from '@/hooks/useDatabase';
 
@@ -11,6 +12,8 @@ export default function Home() {
   const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null);
   const [selectedRelation, setSelectedRelation] = useState<Relation | null>(null);
   const [selectedEntityTextData, setSelectedEntityTextData] = useState<EntityTypeTextData | null>(null);
+  const [connectModalOpen, setConnectModalOpen] = useState(false);
+  const [preselectedItem, setPreselectedItem] = useState<{ entity?: string; relation?: string; asSubject?: boolean }>({});
   const { getTextData } = useEntityTypeData();
 
   useEffect(() => {
@@ -39,58 +42,98 @@ export default function Home() {
         onRelationSelect={setSelectedRelation}
       />
 
-      {/* Selected Item Info */}
-      {(selectedEntity || selectedRelation) && (
-        <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg p-4 max-w-sm z-10" data-test="selected-item-info">
-          {selectedEntity && (
-            <div data-test="selected-entity">
-              <h4 className="font-semibold text-sm mb-2">Selected Entity</h4>
-              <p className="text-xs text-gray-600">ID: {selectedEntity.id}</p>
-              <p className="text-xs text-gray-600">
-                Types: {selectedEntity.type_facial_data_id && '👤 Facial'} 
-                {selectedEntity.type_text_data_id && '📝 Text'}
-              </p>
-              {selectedEntityTextData?.content && (
-                <div className="mt-2" data-test="entity-text-content-display">
-                  <p className="text-xs font-semibold text-gray-700">Text Content:</p>
-                  <p className="text-xs text-gray-600 mt-1 whitespace-pre-wrap">{selectedEntityTextData.content}</p>
+
+      {/* AI Tools - Minimal Floating UI */}
+      <div className="absolute top-4 right-4 z-10" data-test="ai-tools">
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <div className="w-64">
+              <AISearchPanel onEntitySelect={setSelectedEntity} />
+            </div>
+            <DataPanel 
+              preselectedEntity={connectModalOpen ? preselectedItem.entity : undefined}
+              preselectedRelation={connectModalOpen ? preselectedItem.relation : undefined}
+              preselectedAsSubject={preselectedItem.asSubject}
+              onOpen={() => setConnectModalOpen(false)}
+            />
+          </div>
+          
+          {/* Selected Item Info */}
+          {(selectedEntity || selectedRelation) && (
+            <div className="bg-white/90 backdrop-blur-sm rounded-lg p-4 max-w-sm" data-test="selected-item-info">
+              {selectedEntity && (
+                <div data-test="selected-entity">
+                  <h4 className="font-semibold text-sm mb-2">Selected Entity</h4>
+                  <p className="text-xs text-gray-600">ID: {selectedEntity.id}</p>
+                  <p className="text-xs text-gray-600">
+                    Types: {selectedEntity.type_facial_data_id && '👤 Facial'} 
+                    {selectedEntity.type_text_data_id && '📝 Text'}
+                  </p>
+                  {selectedEntityTextData?.content && (
+                    <div className="mt-2" data-test="entity-text-content-display">
+                      <p className="text-xs font-semibold text-gray-700">Text Content:</p>
+                      <p className="text-xs text-gray-600 mt-1 whitespace-pre-wrap">{selectedEntityTextData.content}</p>
+                    </div>
+                  )}
+                  <button
+                    onClick={() => {
+                      setPreselectedItem({ entity: selectedEntity.id, asSubject: true });
+                      setConnectModalOpen(true);
+                      // Trigger the DataPanel modal to open
+                      setTimeout(() => {
+                        const addButton = document.querySelector('[data-test="add-button"]') as HTMLButtonElement;
+                        if (addButton) addButton.click();
+                      }, 100);
+                    }}
+                    className="mt-3 w-full px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors flex items-center justify-center gap-1"
+                    data-test="connect-entity-button"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Connect to
+                  </button>
+                </div>
+              )}
+              {selectedRelation && (
+                <div data-test="selected-relation">
+                  <h4 className="font-semibold text-sm mb-2">Selected Relation</h4>
+                  <p className="text-xs text-gray-600">ID: {selectedRelation.id}</p>
+                  <p className="text-xs text-gray-600">Predicate: {selectedRelation.predicate}</p>
+                  <div className="text-xs text-gray-600 mt-1">
+                    <div>
+                      Subject: {selectedRelation.subject_entity_id ? (
+                        <>Entity: {selectedRelation.subject_entity_id.slice(0, 8)}</>
+                      ) : selectedRelation.subject_relation_id ? (
+                        <>Relation: {selectedRelation.subject_relation_id.slice(0, 8)}</>
+                      ) : 'None'}
+                    </div>
+                    <div>
+                      Object: {selectedRelation.object_entity_id ? (
+                        <>Entity: {selectedRelation.object_entity_id.slice(0, 8)}</>
+                      ) : selectedRelation.object_relation_id ? (
+                        <>Relation: {selectedRelation.object_relation_id.slice(0, 8)}</>
+                      ) : 'None'}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setPreselectedItem({ relation: selectedRelation.id, asSubject: true });
+                      setConnectModalOpen(true);
+                      // Trigger the DataPanel modal to open
+                      setTimeout(() => {
+                        const addButton = document.querySelector('[data-test="add-button"]') as HTMLButtonElement;
+                        if (addButton) addButton.click();
+                      }, 100);
+                    }}
+                    className="mt-3 w-full px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors flex items-center justify-center gap-1"
+                    data-test="connect-relation-button"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Connect to
+                  </button>
                 </div>
               )}
             </div>
           )}
-          {selectedRelation && (
-            <div data-test="selected-relation">
-              <h4 className="font-semibold text-sm mb-2">Selected Relation</h4>
-              <p className="text-xs text-gray-600">ID: {selectedRelation.id}</p>
-              <p className="text-xs text-gray-600">Predicate: {selectedRelation.predicate}</p>
-              <div className="text-xs text-gray-600 mt-1">
-                <div>
-                  Subject: {selectedRelation.subject_entity_id ? (
-                    <>Entity: {selectedRelation.subject_entity_id.slice(0, 8)}</>
-                  ) : selectedRelation.subject_relation_id ? (
-                    <>Relation: {selectedRelation.subject_relation_id.slice(0, 8)}</>
-                  ) : 'None'}
-                </div>
-                <div>
-                  Object: {selectedRelation.object_entity_id ? (
-                    <>Entity: {selectedRelation.object_entity_id.slice(0, 8)}</>
-                  ) : selectedRelation.object_relation_id ? (
-                    <>Relation: {selectedRelation.object_relation_id.slice(0, 8)}</>
-                  ) : 'None'}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* AI Tools - Minimal Floating UI */}
-      <div className="absolute top-4 right-4 z-10" data-test="ai-tools">
-        <div className="flex items-center gap-2">
-          <div className="w-64">
-            <AISearchPanel onEntitySelect={setSelectedEntity} />
-          </div>
-          <DataPanel />
         </div>
       </div>
     </main>
