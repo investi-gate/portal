@@ -11,7 +11,6 @@ export default function Home() {
   const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null);
   const [selectedRelation, setSelectedRelation] = useState<Relation | null>(null);
   const [selectedEntityTextData, setSelectedEntityTextData] = useState<EntityTypeTextData | null>(null);
-  const [showSidebar, setShowSidebar] = useState(true);
   const { getTextData } = useEntityTypeData();
 
   useEffect(() => {
@@ -39,15 +38,6 @@ export default function Home() {
         onEntitySelect={setSelectedEntity}
         onRelationSelect={setSelectedRelation}
       />
-      
-      {/* Toggle Sidebar Button */}
-      <button
-        onClick={() => setShowSidebar(!showSidebar)}
-        className="absolute top-4 right-4 z-20 px-3 py-2 bg-white/90 backdrop-blur-sm rounded-lg transition-all"
-        data-test="toggle-sidebar"
-      >
-        {showSidebar ? '→' : '←'} {showSidebar ? 'Hide' : 'Show'} AI Tools
-      </button>
 
       {/* Selected Item Info */}
       {(selectedEntity || selectedRelation) && (
@@ -94,15 +84,15 @@ export default function Home() {
         </div>
       )}
 
-      {/* AI Tools - Floating Cards */}
-      {showSidebar && (
-        <div className="absolute top-16 right-4 w-96 max-h-[calc(100vh-5rem)] z-10 pointer-events-none overflow-y-auto overflow-x-hidden" data-test="ai-sidebar">
-          <div className="space-y-4 pointer-events-auto pb-4">
+      {/* AI Tools - Minimal Floating UI */}
+      <div className="absolute top-4 right-4 z-10" data-test="ai-tools">
+        <div className="flex items-center gap-2">
+          <div className="w-64">
             <AISearchPanel onEntitySelect={setSelectedEntity} />
-            <DataPanel />
           </div>
+          <DataPanel />
         </div>
-      )}
+      </div>
     </main>
   );
 }

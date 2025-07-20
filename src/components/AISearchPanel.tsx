@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useAIAnalysis } from '@/hooks/useDatabase';
 import { Entity } from '@/db/types';
+import { Search } from 'lucide-react';
 
 interface AISearchPanelProps {
   onEntitySelect?: (entity: Entity) => void;
@@ -26,52 +27,51 @@ export function AISearchPanel({ onEntitySelect }: AISearchPanelProps) {
   };
 
   return (
-    <div className="bg-white/80 backdrop-blur-md rounded-lg p-4 border border-gray-200" data-test="ai-search-panel">
-      <h3 className="text-lg font-semibold mb-4">AI-Powered Search</h3>
-      
-      <form onSubmit={handleSearch} className="mb-4" data-test="search-form">
-        <div className="flex gap-2">
+    <>
+      <form onSubmit={handleSearch} className="relative" data-test="search-form">
+        <div className="relative">
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search entities, relationships, types..."
-            className="flex-1 px-3 py-2 bg-white/50 border border-gray-300/50 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 backdrop-blur-sm"
+            className="w-full pl-4 pr-10 h-10 bg-black/70 backdrop-blur-sm text-white placeholder-gray-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-white/50 transition-all"
             data-test="search-input"
           />
           <button
             type="submit"
             disabled={loading}
-            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:opacity-50"
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-white hover:text-gray-300 disabled:opacity-50 transition-colors"
             data-test="search-button"
+            title="Search"
           >
-            {loading ? 'Searching...' : 'Search'}
+            <Search className="h-4 w-4" />
           </button>
         </div>
       </form>
 
       {results.length > 0 && (
-        <div className="space-y-2" data-test="search-results">
-          <p className="text-sm text-gray-600" data-test="results-count">Found {results.length} results</p>
+        <div className="absolute mt-2 w-full bg-white/90 backdrop-blur-md rounded-lg shadow-lg border border-gray-200 p-2 max-h-64 overflow-y-auto" data-test="search-results">
+          <p className="text-xs text-gray-600 mb-2" data-test="results-count">Found {results.length} results</p>
           {results.map((entity) => (
             <div
               key={entity.id}
-              className="p-3 bg-white/40 border border-gray-200/50 rounded-md hover:bg-white/60 cursor-pointer backdrop-blur-sm transition-all"
+              className="p-2 hover:bg-gray-100 rounded cursor-pointer transition-colors"
               onClick={() => onEntitySelect?.(entity)}
               data-test="search-result-item"
             >
               <div className="font-medium text-sm">
                 Entity {entity.id.slice(0, 8)}
               </div>
-              <div className="text-xs text-gray-600 mt-1">
-                {entity.type_facial_data_id && '👤 Facial Data'}
+              <div className="text-xs text-gray-600 mt-0.5">
+                {entity.type_facial_data_id && '👤 Facial'}
                 {entity.type_facial_data_id && entity.type_text_data_id && ' • '}
-                {entity.type_text_data_id && '📝 Text Data'}
+                {entity.type_text_data_id && '📝 Text'}
               </div>
             </div>
           ))}
         </div>
       )}
-    </div>
+    </>
   );
 }
