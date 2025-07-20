@@ -61,9 +61,31 @@ export function EntityNode({ data }: NodeProps<EntityNodeData>) {
         throw new Error(errorData.error || 'Failed to create entity');
       }
 
+      const newEntity = await entityResponse.json();
+      
+      // Create "contains" relation between source image and cropped portion
+      const relationResponse = await fetch('/api/relations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subject_entity_id: entity.id,
+          predicate: 'contains',
+          object_entity_id: newEntity.entity.id,
+        }),
+      });
+
+      if (!relationResponse.ok) {
+        const errorData = await relationResponse.json();
+        console.error('Failed to create relation:', errorData);
+        throw new Error(errorData.error || 'Failed to create relation');
+      }
+
+      const relation = await relationResponse.json();
+      console.log('Created relation:', relation);
+      
       // TODO: Add the new entity to the flow
       // This would typically be handled by a callback prop or state management
-      console.log('Created image portion entity:', await entityResponse.json());
+      console.log('Created image portion entity:', newEntity);
       
     } catch (error) {
       console.error('Failed to create crop:', error);
