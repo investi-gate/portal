@@ -1,7 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  experimental: {
+    swcPlugins: [
+      ["@preact/signals-react-transform", {
+        mode: "auto", // Only tracks components using .value access
+      }]
+    ]
+  }
 };
 
 export default nextConfig;
