@@ -4,6 +4,7 @@ export interface Bucket {
   entity_type_facial_data: Record<string, EntityTypeFacialData>;
   entity_type_text_data: Record<string, EntityTypeTextData>;
   entity_type_image_data: Record<string, EntityTypeImageData>;
+  entity_type_image_portion: Record<string, EntityTypeImagePortion>;
   entities: Record<string, Entity>;
   relations: Record<string, Relation>;
 }
@@ -67,12 +68,26 @@ export interface EntityTypeImageData {
   file_size_bytes: number | null;
 }
 
+export interface EntityTypeImagePortion {
+  id: string;
+  created_at: Date;
+  updated_at: Date;
+  source_image_entity_id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  label: string | null;
+  confidence: number | null;
+}
+
 export interface Entity {
   id: string;
   created_at: Date | null;
   type_facial_data_id: string | null;
   type_text_data_id: string | null;
   type_image_data_id: string | null;
+  type_image_portion_id: string | null;
 }
 
 export interface Relation {
@@ -89,6 +104,7 @@ export interface CreateEntityInput {
   type_facial_data_id?: string;
   type_text_data_id?: string;
   type_image_data_id?: string;
+  type_image_portion_id?: string;
 }
 
 export interface CreateRelationInput {
@@ -103,6 +119,7 @@ export interface UpdateEntityInput {
   type_facial_data_id?: string | null;
   type_text_data_id?: string | null;
   type_image_data_id?: string | null;
+  type_image_portion_id?: string | null;
 }
 
 export interface UpdateRelationInput {

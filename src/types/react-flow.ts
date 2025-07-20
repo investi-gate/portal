@@ -2,7 +2,17 @@ import { Node, Edge } from '@xyflow/react';
 import { Entity, Relation } from '@/db/types';
 
 export interface EntityNodeData {
-  entity: Entity & { text_content?: string };
+  entity: Entity & { 
+    text_content?: string;
+    image_portion?: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      label?: string | null;
+      confidence?: number | null;
+    };
+  };
   label: string;
   importance?: number;
   imageUrl?: string;

@@ -212,6 +212,8 @@ export function calculateGraphLayout(
     
     // Get image URL if entity has image data
     let imageUrl: string | undefined;
+    let imagePortion: any | undefined;
+    
     if (entity.type_image_data_id && bucket) {
       const imageData = bucket.entity_type_image_data[entity.type_image_data_id];
       if (imageData?.media_id) {
@@ -220,13 +222,41 @@ export function calculateGraphLayout(
       }
     }
     
+    // Handle image portion entities
+    if (entity.type_image_portion_id && bucket) {
+      const portionData = bucket.entity_type_image_portion[entity.type_image_portion_id];
+      if (portionData) {
+        imagePortion = {
+          x: portionData.x,
+          y: portionData.y,
+          width: portionData.width,
+          height: portionData.height,
+          label: portionData.label,
+          confidence: portionData.confidence,
+        };
+        
+        // Get the source image URL
+        const sourceEntity = Object.values(bucket.entities).find(e => e.id === portionData.source_image_entity_id);
+        if (sourceEntity?.type_image_data_id) {
+          const sourceImageData = bucket.entity_type_image_data[sourceEntity.type_image_data_id];
+          if (sourceImageData?.media_id) {
+            const sourceMedia = bucket.medias[sourceImageData.media_id];
+            imageUrl = sourceMedia?.url;
+          }
+        }
+      }
+    }
+    
     nodes.push({
       id: entity.id,
       type: 'entity',
       position,
       data: {
-        entity,
-        label: `Entity ${entity.id.slice(0, 8)}`,
+        entity: {
+          ...entity,
+          image_portion: imagePortion,
+        },
+        label: imagePortion?.label || `Entity ${entity.id.slice(0, 8)}`,
         importance,
         imageUrl,
       },

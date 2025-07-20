@@ -1,5 +1,5 @@
 import { DatabaseClient } from './client';
-import { EntityTypeFacialData, EntityTypeTextData, EntityTypeImageData } from './types';
+import { EntityTypeFacialData, EntityTypeTextData, EntityTypeImageData, EntityTypeImagePortion } from './types';
 
 export async function dbCreateEntityTypeFacialData(
   db: DatabaseClient,
@@ -262,6 +262,133 @@ export async function dbDeleteEntityTypeImageData(
   id: string
 ): Promise<boolean> {
   const query = `DELETE FROM entity_type__image_data WHERE id = $1`;
+  const result = await db.query(query, [id]);
+  return result.rowCount > 0;
+}
+
+export async function dbCreateEntityTypeImagePortion(
+  db: DatabaseClient,
+  source_image_entity_id: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  label?: string | null,
+  confidence?: number | null
+): Promise<EntityTypeImagePortion> {
+  const query = `
+    INSERT INTO entity_type__image_portion (
+      source_image_entity_id, x, y, width, height, label, confidence
+    ) 
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    RETURNING id, created_at, updated_at, source_image_entity_id, 
+              x, y, width, height, label, confidence
+  `;
+
+  const result = await db.query(query, [
+    source_image_entity_id, x, y, width, height, 
+    label || null, confidence || null
+  ]);
+  return result.rows[0];
+}
+
+export async function dbGetEntityTypeImagePortion(
+  db: DatabaseClient,
+  id: string
+): Promise<EntityTypeImagePortion | null> {
+  const query = `
+    SELECT id, created_at, updated_at, source_image_entity_id,
+           x, y, width, height, label, confidence
+    FROM entity_type__image_portion
+    WHERE id = $1
+  `;
+
+  const result = await db.query(query, [id]);
+  return result.rows[0] || null;
+}
+
+export async function dbGetAllEntityTypeImagePortion(
+  db: DatabaseClient,
+  limit = 100,
+  offset = 0
+): Promise<EntityTypeImagePortion[]> {
+  const query = `
+    SELECT id, created_at, updated_at, source_image_entity_id,
+           x, y, width, height, label, confidence
+    FROM entity_type__image_portion
+    ORDER BY created_at DESC
+    LIMIT $1 OFFSET $2
+  `;
+
+  const result = await db.query(query, [limit, offset]);
+  return result.rows;
+}
+
+export async function dbGetEntityTypeImagePortionBySourceImage(
+  db: DatabaseClient,
+  source_image_entity_id: string,
+  limit = 100,
+  offset = 0
+): Promise<EntityTypeImagePortion[]> {
+  const query = `
+    SELECT id, created_at, updated_at, source_image_entity_id,
+           x, y, width, height, label, confidence
+    FROM entity_type__image_portion
+    WHERE source_image_entity_id = $1
+    ORDER BY created_at DESC
+    LIMIT $2 OFFSET $3
+  `;
+
+  const result = await db.query(query, [source_image_entity_id, limit, offset]);
+  return result.rows;
+}
+
+export async function dbUpdateEntityTypeImagePortion(
+  db: DatabaseClient,
+  id: string,
+  updates: {
+    source_image_entity_id?: string;
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+    label?: string | null;
+    confidence?: number | null;
+  }
+): Promise<EntityTypeImagePortion | null> {
+  const setClauses = [];
+  const values = [id];
+  let paramCount = 1;
+
+  Object.entries(updates).forEach(([key, value]) => {
+    if (value !== undefined) {
+      paramCount++;
+      setClauses.push(`${key} = $${paramCount}`);
+      values.push(value);
+    }
+  });
+
+  if (setClauses.length === 0) {
+    return dbGetEntityTypeImagePortion(db, id);
+  }
+
+  const query = `
+    UPDATE entity_type__image_portion
+    SET updated_at = CURRENT_TIMESTAMP, ${setClauses.join(', ')}
+    WHERE id = $1
+    RETURNING id, created_at, updated_at, source_image_entity_id,
+              x, y, width, height, label, confidence
+  `;
+
+  const result = await db.query(query, values);
+  return result.rows[0] || null;
+}
+
+export async function dbDeleteEntityTypeImagePortion(
+  db: DatabaseClient,
+  id: string
+): Promise<boolean> {
+  const query = `DELETE FROM entity_type__image_portion WHERE id = $1`;
   const result = await db.query(query, [id]);
   return result.rowCount > 0;
 }

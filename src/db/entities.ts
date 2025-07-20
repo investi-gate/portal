@@ -5,20 +5,21 @@ export async function dbCreateEntity(
   db: DatabaseClient,
   input: CreateEntityInput
 ): Promise<Entity> {
-  if (!input.type_facial_data_id && !input.type_text_data_id && !input.type_image_data_id) {
+  if (!input.type_facial_data_id && !input.type_text_data_id && !input.type_image_data_id && !input.type_image_portion_id) {
     throw new Error('At least one entity type must be specified');
   }
 
   const query = `
-    INSERT INTO entities (type_facial_data_id, type_text_data_id, type_image_data_id)
-    VALUES ($1, $2, $3)
-    RETURNING id, created_at, type_facial_data_id, type_text_data_id, type_image_data_id
+    INSERT INTO entities (type_facial_data_id, type_text_data_id, type_image_data_id, type_image_portion_id)
+    VALUES ($1, $2, $3, $4)
+    RETURNING id, created_at, type_facial_data_id, type_text_data_id, type_image_data_id, type_image_portion_id
   `;
 
   const result = await db.query(query, [
     input.type_facial_data_id || null,
     input.type_text_data_id || null,
     input.type_image_data_id || null,
+    input.type_image_portion_id || null,
   ]);
 
   return result.rows[0];
@@ -29,7 +30,7 @@ export async function dbGetEntity(
   id: string
 ): Promise<Entity | null> {
   const query = `
-    SELECT id, created_at, type_facial_data_id, type_text_data_id, type_image_data_id
+    SELECT id, created_at, type_facial_data_id, type_text_data_id, type_image_data_id, type_image_portion_id
     FROM entities
     WHERE id = $1
   `;
@@ -44,7 +45,7 @@ export async function dbGetAllEntities(
   offset = 0
 ): Promise<Entity[]> {
   const query = `
-    SELECT id, created_at, type_facial_data_id, type_text_data_id, type_image_data_id
+    SELECT id, created_at, type_facial_data_id, type_text_data_id, type_image_data_id, type_image_portion_id
     FROM entities
     ORDER BY created_at DESC
     LIMIT $1 OFFSET $2
@@ -66,6 +67,7 @@ export async function dbGetAllEntitiesWithTextData(
       e.type_facial_data_id, 
       e.type_text_data_id, 
       e.type_image_data_id,
+      e.type_image_portion_id,
       t.content as text_content
     FROM entities e
     LEFT JOIN entity_type__text_data t ON e.type_text_data_id = t.id
@@ -104,6 +106,12 @@ export async function dbUpdateEntity(
     paramCount++;
   }
 
+  if (input.type_image_portion_id !== undefined) {
+    setClause.push(`type_image_portion_id = $${paramCount}`);
+    values.push(input.type_image_portion_id);
+    paramCount++;
+  }
+
   if (setClause.length === 0) {
     return dbGetEntity(db, id);
   }
@@ -114,7 +122,7 @@ export async function dbUpdateEntity(
     UPDATE entities
     SET ${setClause.join(', ')}
     WHERE id = $${paramCount}
-    RETURNING id, created_at, type_facial_data_id, type_text_data_id, type_image_data_id
+    RETURNING id, created_at, type_facial_data_id, type_text_data_id, type_image_data_id, type_image_portion_id
   `;
 
   const result = await db.query(query, values);
@@ -182,7 +190,7 @@ export async function dbGetAllEntitiesWithBucket(
 ): Promise<BucketedResponse<string[]>> {
   // First get all entities
   const entitiesQuery = `
-    SELECT id, created_at, type_facial_data_id, type_text_data_id, type_image_data_id
+    SELECT id, created_at, type_facial_data_id, type_text_data_id, type_image_data_id, type_image_portion_id
     FROM entities
     ORDER BY created_at DESC
     LIMIT $1 OFFSET $2
@@ -202,6 +210,9 @@ export async function dbGetAllEntitiesWithBucket(
   const imageDataIds = entities
     .filter(e => e.type_image_data_id)
     .map(e => e.type_image_data_id);
+  const imagePortionIds = entities
+    .filter(e => e.type_image_portion_id)
+    .map(e => e.type_image_portion_id);
   
   // Initialize bucket
   const bucket: Bucket = {
@@ -210,6 +221,7 @@ export async function dbGetAllEntitiesWithBucket(
     entity_type_facial_data: {},
     entity_type_text_data: {},
     entity_type_image_data: {},
+    entity_type_image_portion: {},
     entities: {},
     relations: {},
   };
@@ -307,6 +319,19 @@ export async function dbGetAllEntitiesWithBucket(
         bucket.medias[media.id] = media;
       });
     }
+  }
+  
+  // Fetch image portions if any
+  if (imagePortionIds.length > 0) {
+    const imagePortionQuery = `
+      SELECT id, created_at, updated_at, source_image_entity_id, x, y, width, height, label, confidence
+      FROM entity_type__image_portion
+      WHERE id = ANY($1)
+    `;
+    const imagePortionResult = await db.query(imagePortionQuery, [imagePortionIds]);
+    imagePortionResult.rows.forEach(ip => {
+      bucket.entity_type_image_portion[ip.id] = ip;
+    });
   }
   
   return {
