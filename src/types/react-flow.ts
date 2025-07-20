@@ -2,9 +2,10 @@ import { Node, Edge } from '@xyflow/react';
 import { Entity, Relation } from '@/db/types';
 
 export interface EntityNodeData {
-  entity: Entity;
+  entity: Entity & { text_content?: string };
   label: string;
   importance?: number;
+  imageUrl?: string;
 }
 
 export interface RelationNodeData {

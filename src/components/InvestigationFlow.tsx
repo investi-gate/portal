@@ -41,7 +41,7 @@ interface InvestigationFlowProps {
 }
 
 export function InvestigationFlow({ onEntitySelect, onRelationSelect }: InvestigationFlowProps) {
-  const { entities, loading: entitiesLoading } = useEntities();
+  const { entities, loading: entitiesLoading, bucket } = useEntities();
   const { relations, loading: relationsLoading } = useRelations();
   const { analyze } = useAIAnalysis();
   
@@ -53,10 +53,10 @@ export function InvestigationFlow({ onEntitySelect, onRelationSelect }: Investig
   // Memoize the calculated nodes to prevent unnecessary recalculations
   const calculatedNodes = useMemo(() => {
     if (entities.length > 0 || relations.length > 0) {
-      return calculateGraphLayout(entities, relations, entityScores);
+      return calculateGraphLayout(entities, relations, entityScores, bucket);
     }
     return [];
-  }, [entities, relations, entityScores]);
+  }, [entities, relations, entityScores, bucket]);
 
   // Convert entities and relations to nodes and edges
   useEffect(() => {
@@ -78,7 +78,7 @@ export function InvestigationFlow({ onEntitySelect, onRelationSelect }: Investig
 
   useEffect(() => {
     setNodes(calculatedNodes);
-  }, [calculatedNodes, setNodes]);
+  }, [calculatedNodes]);
 
   // Memoize edge calculations - now depends on node positions
   const calculatedEdges = useMemo(() => {

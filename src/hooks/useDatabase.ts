@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Entity, Relation, EntityTypeFacialData, EntityTypeTextData } from '@/db/types';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Entity, Relation, EntityTypeFacialData, EntityTypeTextData, BucketedResponse, Bucket } from '@/db/types';
 
 export function useEntities() {
-  const [entities, setEntities] = useState<Entity[]>([]);
+  const [bucket, setBucket] = useState<Bucket | null>(null);
+  const [entityIds, setEntityIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
@@ -11,8 +12,9 @@ export function useEntities() {
       setLoading(true);
       const response = await fetch('/api/entities');
       if (!response.ok) throw new Error('Failed to fetch entities');
-      const data = await response.json();
-      setEntities(data.entities);
+      const data: BucketedResponse<string[]> = await response.json();
+      setBucket(data.bucket);
+      setEntityIds(data.data);
       setError(null);
     } catch (err) {
       setError(err as Error);
@@ -36,13 +38,14 @@ export function useEntities() {
         throw new Error(errorData.error || 'Failed to create entity');
       }
       const data = await response.json();
-      setEntities(prev => [...prev, data.entity]);
+      // Refetch to get updated bucket
+      await fetchEntities();
       return data.entity;
     } catch (err) {
       setError(err as Error);
       throw err;
     }
-  }, []);
+  }, [fetchEntities]);
 
   const updateEntity = useCallback(async (id: string, input: {
     type_facial_data_id?: string | null;
@@ -56,15 +59,14 @@ export function useEntities() {
       });
       if (!response.ok) throw new Error('Failed to update entity');
       const data = await response.json();
-      if (data.entity) {
-        setEntities(prev => prev.map(e => e.id === id ? data.entity : e));
-      }
+      // Refetch to get updated bucket
+      await fetchEntities();
       return data.entity;
     } catch (err) {
       setError(err as Error);
       throw err;
     }
-  }, []);
+  }, [fetchEntities]);
 
   const deleteEntity = useCallback(async (id: string) => {
     try {
@@ -72,20 +74,41 @@ export function useEntities() {
         method: 'DELETE',
       });
       if (!response.ok) throw new Error('Failed to delete entity');
-      setEntities(prev => prev.filter(e => e.id !== id));
+      // Refetch to get updated bucket
+      await fetchEntities();
       return true;
     } catch (err) {
       setError(err as Error);
       throw err;
     }
-  }, []);
+  }, [fetchEntities]);
 
   useEffect(() => {
     fetchEntities();
   }, [fetchEntities]);
 
+  // Helper to get entities with their text content
+  const entitiesWithTextContent = useMemo(() => {
+    if (!bucket) return [];
+    
+    return entityIds.map(id => {
+      const entity = bucket.entities[id];
+      if (!entity) return null;
+      
+      const textContent = entity.type_text_data_id 
+        ? bucket.entity_type_text_data[entity.type_text_data_id]?.content 
+        : undefined;
+      
+      return {
+        ...entity,
+        text_content: textContent
+      };
+    }).filter(Boolean) as (Entity & { text_content?: string })[];
+  }, [bucket, entityIds]);
+
   return {
-    entities,
+    bucket,
+    entities: entitiesWithTextContent,
     loading,
     error,
     refetch: fetchEntities,
@@ -94,6 +117,7 @@ export function useEntities() {
     deleteEntity
   };
 }
+
 
 export function useRelations() {
   const [relations, setRelations] = useState<Relation[]>([]);

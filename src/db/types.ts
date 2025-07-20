@@ -1,3 +1,18 @@
+export interface Bucket {
+  medias: Record<string, Media>;
+  face_embeddings: Record<string, FaceEmbedding>;
+  entity_type_facial_data: Record<string, EntityTypeFacialData>;
+  entity_type_text_data: Record<string, EntityTypeTextData>;
+  entity_type_image_data: Record<string, EntityTypeImageData>;
+  entities: Record<string, Entity>;
+  relations: Record<string, Relation>;
+}
+
+export interface BucketedResponse<T> {
+  bucket: Bucket;
+  data: T;
+}
+
 export interface Media {
   id: string;
   file_name: string;

@@ -1,4 +1,4 @@
-import { Entity, Relation } from '@/db/types';
+import { Entity, Relation, DataBucket } from '@/db/types';
 import { EntityScore } from '@/lib/ai-analysis';
 import { InvestigationNode } from '@/types/react-flow';
 
@@ -15,9 +15,10 @@ const DEFAULT_LAYOUT_OPTIONS: LayoutOptions = {
 };
 
 export function calculateGraphLayout(
-  entities: Entity[],
+  entities: (Entity & { text_content?: string })[],
   relations: Relation[],
   scores: EntityScore[],
+  bucket?: DataBucket | null,
   options: Partial<LayoutOptions> = {}
 ): InvestigationNode[] {
   const layoutOpts = { ...DEFAULT_LAYOUT_OPTIONS, ...options };
@@ -209,6 +210,16 @@ export function calculateGraphLayout(
     const score = scoreMap.get(entity.id);
     const importance = score?.score || 0;
     
+    // Get image URL if entity has image data
+    let imageUrl: string | undefined;
+    if (entity.type_image_data_id && bucket) {
+      const imageData = bucket.entity_type_image_data[entity.type_image_data_id];
+      if (imageData?.media_id) {
+        const media = bucket.medias[imageData.media_id];
+        imageUrl = media?.url;
+      }
+    }
+    
     nodes.push({
       id: entity.id,
       type: 'entity',
@@ -217,6 +228,7 @@ export function calculateGraphLayout(
         entity,
         label: `Entity ${entity.id.slice(0, 8)}`,
         importance,
+        imageUrl,
       },
     });
   });

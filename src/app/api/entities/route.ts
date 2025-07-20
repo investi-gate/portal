@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createPool } from '@/db/client';
-import { dbGetAllEntities, dbCreateEntity } from '@/db/entities';
+import { dbCreateEntity, dbGetAllEntitiesWithBucket } from '@/db/entities';
 
 const pool = createPool();
 
@@ -10,8 +10,8 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '100');
     const offset = parseInt(searchParams.get('offset') || '0');
 
-    const entities = await dbGetAllEntities(pool, limit, offset);
-    return NextResponse.json({ entities });
+    const result = await dbGetAllEntitiesWithBucket(pool, limit, offset);
+    return NextResponse.json(result);
   } catch (error) {
     console.error('Error fetching entities:', error);
     return NextResponse.json(
