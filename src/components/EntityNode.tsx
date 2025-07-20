@@ -1,7 +1,7 @@
 import React from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
 import { EntityNodeData } from '@/types/react-flow';
-import { User, FileText } from 'lucide-react';
+import { User, FileText, Image } from 'lucide-react';
 
 export function EntityNode({ data }: NodeProps<EntityNodeData>) {
   const { entity, label, importance = 0 } = data;
@@ -47,10 +47,19 @@ export function EntityNode({ data }: NodeProps<EntityNodeData>) {
         <div className="flex items-center gap-1 text-xs text-gray-700" data-test="entity-node-type">
           {entity.type_facial_data_id && <User className="h-3 w-3" />}
           {entity.type_text_data_id && <FileText className="h-3 w-3" />}
+          {entity.type_image_data_id && <Image className="h-3 w-3" aria-hidden="true" />}
           <span>
-            {entity.type_facial_data_id && entity.type_text_data_id && 'Both'}
-            {entity.type_facial_data_id && !entity.type_text_data_id && 'Facial'}
-            {!entity.type_facial_data_id && entity.type_text_data_id && 'Text'}
+            {(() => {
+              const types = [];
+              if (entity.type_facial_data_id) types.push('Facial');
+              if (entity.type_text_data_id) types.push('Text');
+              if (entity.type_image_data_id) types.push('Image');
+              
+              if (types.length === 0) return 'Unknown';
+              if (types.length === 1) return types[0];
+              if (types.length === 2) return types.join(' & ');
+              return 'Multi-type';
+            })()}
           </span>
         </div>
       </div>

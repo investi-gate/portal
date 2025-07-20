@@ -42,3 +42,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# service account keys and json files
+main-345809-874e3c78d215.json
+*.json

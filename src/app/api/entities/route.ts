@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     
-    if (!body.type_facial_data_id && !body.type_text_data_id) {
+    if (!body.type_facial_data_id && !body.type_text_data_id && !body.type_image_data_id) {
       return NextResponse.json(
         { error: 'At least one entity type must be specified' },
         { status: 400 }
@@ -35,6 +35,7 @@ export async function POST(request: NextRequest) {
     const entity = await dbCreateEntity(pool, {
       type_facial_data_id: body.type_facial_data_id,
       type_text_data_id: body.type_text_data_id,
+      type_image_data_id: body.type_image_data_id,
     });
 
     return NextResponse.json({ entity }, { status: 201 });

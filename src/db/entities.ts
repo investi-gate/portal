@@ -5,19 +5,20 @@ export async function dbCreateEntity(
   db: DatabaseClient,
   input: CreateEntityInput
 ): Promise<Entity> {
-  if (!input.type_facial_data_id && !input.type_text_data_id) {
+  if (!input.type_facial_data_id && !input.type_text_data_id && !input.type_image_data_id) {
     throw new Error('At least one entity type must be specified');
   }
 
   const query = `
-    INSERT INTO entities (type_facial_data_id, type_text_data_id)
-    VALUES ($1, $2)
-    RETURNING id, created_at, type_facial_data_id, type_text_data_id
+    INSERT INTO entities (type_facial_data_id, type_text_data_id, type_image_data_id)
+    VALUES ($1, $2, $3)
+    RETURNING id, created_at, type_facial_data_id, type_text_data_id, type_image_data_id
   `;
 
   const result = await db.query(query, [
     input.type_facial_data_id || null,
     input.type_text_data_id || null,
+    input.type_image_data_id || null,
   ]);
 
   return result.rows[0];
@@ -28,7 +29,7 @@ export async function dbGetEntity(
   id: string
 ): Promise<Entity | null> {
   const query = `
-    SELECT id, created_at, type_facial_data_id, type_text_data_id
+    SELECT id, created_at, type_facial_data_id, type_text_data_id, type_image_data_id
     FROM entities
     WHERE id = $1
   `;
@@ -43,7 +44,7 @@ export async function dbGetAllEntities(
   offset = 0
 ): Promise<Entity[]> {
   const query = `
-    SELECT id, created_at, type_facial_data_id, type_text_data_id
+    SELECT id, created_at, type_facial_data_id, type_text_data_id, type_image_data_id
     FROM entities
     ORDER BY created_at DESC
     LIMIT $1 OFFSET $2
@@ -74,6 +75,12 @@ export async function dbUpdateEntity(
     paramCount++;
   }
 
+  if (input.type_image_data_id !== undefined) {
+    setClause.push(`type_image_data_id = $${paramCount}`);
+    values.push(input.type_image_data_id);
+    paramCount++;
+  }
+
   if (setClause.length === 0) {
     return dbGetEntity(db, id);
   }
@@ -84,7 +91,7 @@ export async function dbUpdateEntity(
     UPDATE entities
     SET ${setClause.join(', ')}
     WHERE id = $${paramCount}
-    RETURNING id, created_at, type_facial_data_id, type_text_data_id
+    RETURNING id, created_at, type_facial_data_id, type_text_data_id, type_image_data_id
   `;
 
   const result = await db.query(query, values);
@@ -105,7 +112,7 @@ export async function dbGetEntitiesByFacialDataId(
   facialDataId: string
 ): Promise<Entity[]> {
   const query = `
-    SELECT id, created_at, type_facial_data_id, type_text_data_id
+    SELECT id, created_at, type_facial_data_id, type_text_data_id, type_image_data_id
     FROM entities
     WHERE type_facial_data_id = $1
     ORDER BY created_at DESC
@@ -120,12 +127,27 @@ export async function dbGetEntitiesByTextDataId(
   textDataId: string
 ): Promise<Entity[]> {
   const query = `
-    SELECT id, created_at, type_facial_data_id, type_text_data_id
+    SELECT id, created_at, type_facial_data_id, type_text_data_id, type_image_data_id
     FROM entities
     WHERE type_text_data_id = $1
     ORDER BY created_at DESC
   `;
 
   const result = await db.query(query, [textDataId]);
+  return result.rows;
+}
+
+export async function dbGetEntitiesByImageDataId(
+  db: DatabaseClient,
+  imageDataId: string
+): Promise<Entity[]> {
+  const query = `
+    SELECT id, created_at, type_facial_data_id, type_text_data_id, type_image_data_id
+    FROM entities
+    WHERE type_image_data_id = $1
+    ORDER BY created_at DESC
+  `;
+
+  const result = await db.query(query, [imageDataId]);
   return result.rows;
 }

@@ -14,7 +14,7 @@ tasks:
     desc: Run portal in tmux session
     cmds:
       - |
-        tmux new-session -d -s {{.SESSION_NAME}} -n {{.WINDOW_NAME}} 'npm run dev'
+        tmux new-session -d -s {{.SESSION_NAME}} -n {{.WINDOW_NAME}} 'PORTAL_PORT={{.PORTAL_PORT | default "30001"}} npm run dev'
 
   attach:
     desc: Attach to portal tmux session

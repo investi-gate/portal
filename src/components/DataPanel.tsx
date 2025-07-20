@@ -14,28 +14,70 @@ import {
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { User, FileText, Layers } from 'lucide-react';
+import { User, FileText, Image, Upload } from 'lucide-react';
 
 export function DataPanel() {
   const { entities, createEntity, deleteEntity } = useEntities();
   const { relations, createRelation, deleteRelation } = useRelations();
   const [entityModalOpen, setEntityModalOpen] = useState(false);
   const [showCreateRelation, setShowCreateRelation] = useState(false);
-  const [entityType, setEntityType] = useState<'facial' | 'text' | 'both'>('facial');
+  const [entityType, setEntityType] = useState<'facial' | 'text' | 'image'>('facial');
   const [textContent, setTextContent] = useState('');
+  const [imageMediaId, setImageMediaId] = useState('');
+  const [imageCaption, setImageCaption] = useState('');
+  const [imageAltText, setImageAltText] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('');
   const [selectedObject, setSelectedObject] = useState('');
   const [predicate, setPredicate] = useState('');
   const [subjectType, setSubjectType] = useState<'entity' | 'relation'>('entity');
   const [objectType, setObjectType] = useState<'entity' | 'relation'>('entity');
 
+  const handleFileUpload = async () => {
+    if (!selectedFile) {
+      setUploadError('Please select a file');
+      return null;
+    }
+
+    setIsUploading(true);
+    setUploadError('');
+
+    try {
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+
+      const response = await fetch('/api/media', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Upload failed');
+      }
+
+      const data = await response.json();
+      setImageMediaId(data.media.id);
+      return data.media.id;
+    } catch (error) {
+      console.error('Upload error:', error);
+      setUploadError(error instanceof Error ? error.message : 'Upload failed');
+      return null;
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const handleCreateEntity = async () => {
     try {
       let facialId: string | undefined;
       let textId: string | undefined;
+      let imageId: string | undefined;
 
       // Create entity type records first
-      if (entityType === 'facial' || entityType === 'both') {
+      if (entityType === 'facial') {
         const facialResponse = await fetch('/api/entity-types/facial', {
           method: 'POST',
         });
@@ -44,7 +86,7 @@ export function DataPanel() {
         facialId = facialData.facialData.id;
       }
 
-      if (entityType === 'text' || entityType === 'both') {
+      if (entityType === 'text') {
         if (!textContent || textContent.trim() === '') {
           alert('Text content is required for text entities');
           return;
@@ -68,14 +110,63 @@ export function DataPanel() {
         textId = textData.textData.id;
       }
 
+      if (entityType === 'image') {
+        let mediaId = imageMediaId;
+        
+        // If no media ID but file selected, upload first
+        if (!mediaId && selectedFile) {
+          mediaId = await handleFileUpload();
+          if (!mediaId) {
+            return; // Upload failed
+          }
+        }
+        
+        if (!mediaId || mediaId.trim() === '') {
+          alert('Please upload an image or provide a media ID');
+          return;
+        }
+        
+        const imageResponse = await fetch('/api/entity-types/image', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ 
+            media_id: mediaId,
+            caption: imageCaption || null,
+            alt_text: imageAltText || null
+          }),
+        });
+        
+        if (!imageResponse.ok) {
+          const errorData = await imageResponse.json();
+          console.error('Failed to create image data:', errorData);
+          throw new Error(errorData.error || 'Failed to create image data type');
+        }
+        
+        const imageData = await imageResponse.json();
+        imageId = imageData.imageData.id;
+      }
+
+      // Ensure at least one type is specified
+      if (!facialId && !textId && !imageId) {
+        throw new Error('At least one entity type must be specified');
+      }
+
       await createEntity({
         type_facial_data_id: facialId,
         type_text_data_id: textId,
+        type_image_data_id: imageId,
       });
       
       setEntityModalOpen(false);
       setEntityType('facial'); // Reset to default
       setTextContent(''); // Reset text content
+      setImageMediaId(''); // Reset image fields
+      setImageCaption('');
+      setImageAltText('');
+      setSelectedFile(null);
+      setUploadError('');
     } catch (error) {
       console.error('Failed to create entity:', error);
     }
@@ -144,19 +235,19 @@ export function DataPanel() {
                     Select the type of data for your new entity.
                   </DialogDescription>
                 </DialogHeader>
-                <Tabs value={entityType} onValueChange={(value: string) => setEntityType(value as 'facial' | 'text' | 'both')} className="w-full">
+                <Tabs value={entityType} onValueChange={(value: string) => setEntityType(value as 'facial' | 'text' | 'image')} className="w-full">
                   <TabsList className="grid w-full grid-cols-3">
                     <TabsTrigger value="facial" data-test="entity-type-facial" className="flex items-center gap-2">
                       <User className="h-4 w-4" />
-                      Facial Data
+                      Facial
                     </TabsTrigger>
                     <TabsTrigger value="text" data-test="entity-type-text" className="flex items-center gap-2">
                       <FileText className="h-4 w-4" />
-                      Text Data
+                      Text
                     </TabsTrigger>
-                    <TabsTrigger value="both" data-test="entity-type-both" className="flex items-center gap-2">
-                      <Layers className="h-4 w-4" />
-                      Both
+                    <TabsTrigger value="image" data-test="entity-type-image" className="flex items-center gap-2">
+                      <Image className="h-4 w-4" alt="" />
+                      Image
                     </TabsTrigger>
                   </TabsList>
                   <TabsContent value="facial" className="mt-4">
@@ -185,22 +276,95 @@ export function DataPanel() {
                       </div>
                     </div>
                   </TabsContent>
-                  <TabsContent value="both" className="mt-4">
+                  <TabsContent value="image" className="mt-4">
                     <div className="space-y-3">
                       <div className="text-sm text-gray-600">
-                        <p>Create an entity with both facial and text data.</p>
-                        <p className="mt-2">This entity will have the capability to store both facial features and textual information.</p>
+                        <p>Create an entity with image data.</p>
+                        <p className="mt-2">Upload an image or provide an existing media ID.</p>
+                      </div>
+                      
+                      <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
+                        <div className="text-center">
+                          <Upload className="mx-auto h-12 w-12 text-gray-400" />
+                          <div className="mt-2">
+                            <label htmlFor="file-upload" className="cursor-pointer">
+                              <span className="text-sm text-blue-600 hover:text-blue-500">
+                                Upload an image
+                              </span>
+                              <input
+                                id="file-upload"
+                                name="file-upload"
+                                type="file"
+                                className="sr-only"
+                                accept="image/jpeg,image/png,image/webp,image/gif"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) {
+                                    setSelectedFile(file);
+                                    setUploadError('');
+                                  }
+                                }}
+                                data-test="entity-image-file-input"
+                              />
+                            </label>
+                            <p className="text-xs text-gray-500 mt-1">
+                              JPEG, PNG, WebP, GIF up to 10MB
+                            </p>
+                          </div>
+                        </div>
+                        {selectedFile && (
+                          <div className="mt-3 text-sm text-gray-600">
+                            Selected: {selectedFile.name}
+                          </div>
+                        )}
+                        {uploadError && (
+                          <div className="mt-2 text-sm text-red-600">
+                            {uploadError}
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="relative">
+                        <div className="absolute inset-0 flex items-center">
+                          <div className="w-full border-t border-gray-300" />
+                        </div>
+                        <div className="relative flex justify-center text-sm">
+                          <span className="bg-white px-2 text-gray-500">Or use existing media</span>
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <label className="text-sm font-medium text-gray-700">Media ID</label>
+                        <input
+                          type="text"
+                          value={imageMediaId}
+                          onChange={(e) => setImageMediaId(e.target.value)}
+                          placeholder="Enter existing media ID (UUID)..."
+                          className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md"
+                          disabled={isUploading}
+                          data-test="entity-image-media-id"
+                        />
                       </div>
                       <div>
-                        <label className="text-sm font-medium text-gray-700">Text Content <span className="text-red-500">*</span></label>
-                        <Textarea
-                          value={textContent}
-                          onChange={(e) => setTextContent(e.target.value)}
-                          placeholder="Enter text content for this entity..."
-                          className="mt-1 w-full"
-                          rows={4}
-                          required
-                          data-test="entity-text-content-both"
+                        <label className="text-sm font-medium text-gray-700">Caption</label>
+                        <input
+                          type="text"
+                          value={imageCaption}
+                          onChange={(e) => setImageCaption(e.target.value)}
+                          placeholder="Enter image caption..."
+                          className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md"
+                          data-test="entity-image-caption"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-gray-700">Alt Text</label>
+                        <input
+                          type="text"
+                          value={imageAltText}
+                          onChange={(e) => setImageAltText(e.target.value)}
+                          placeholder="Enter alternative text..."
+                          className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md"
+                          data-test="entity-image-alt-text"
                         />
                       </div>
                     </div>
@@ -218,8 +382,9 @@ export function DataPanel() {
                     type="submit"
                     onClick={handleCreateEntity}
                     data-test="create-entity-button"
+                    disabled={isUploading}
                   >
-                    Create Entity
+                    {isUploading ? 'Uploading...' : 'Create Entity'}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -238,6 +403,7 @@ export function DataPanel() {
                   <span className="flex items-center gap-1" data-test="entity-icons">
                     {entity.type_facial_data_id && <User className="h-3 w-3 text-gray-600" />}
                     {entity.type_text_data_id && <FileText className="h-3 w-3 text-gray-600" />}
+                    {entity.type_image_data_id && <Image className="h-3 w-3 text-gray-600" alt="" />}
                   </span>
                 </div>
                 <button
@@ -312,6 +478,7 @@ export function DataPanel() {
                           {entity.id.slice(0, 8)}
                           {entity.type_facial_data_id && ' 👤'}
                           {entity.type_text_data_id && ' 📝'}
+                          {entity.type_image_data_id && ' 🖼️'}
                         </option>
                       ))
                     ) : (
@@ -383,6 +550,7 @@ export function DataPanel() {
                           {entity.id.slice(0, 8)}
                           {entity.type_facial_data_id && ' 👤'}
                           {entity.type_text_data_id && ' 📝'}
+                          {entity.type_image_data_id && ' 🖼️'}
                         </option>
                       ))
                     ) : (
