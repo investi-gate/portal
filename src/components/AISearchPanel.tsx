@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React from 'react';
+import { proxy, useSnapshot } from 'valtio';
 import { useAIAnalysis } from '@/hooks/useDatabase';
 import { Entity } from '@/db/types';
 import { Search } from 'lucide-react';
@@ -9,18 +10,23 @@ interface AISearchPanelProps {
   onEntitySelect?: (entity: Entity) => void;
 }
 
+// Create a proxy for the search panel state
+const searchPanelState = proxy({
+  query: '',
+  results: [] as Entity[],
+});
+
 export function AISearchPanel({ onEntitySelect }: AISearchPanelProps) {
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState<Entity[]>([]);
+  const state = useSnapshot(searchPanelState);
   const { search, loading } = useAIAnalysis();
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!query.trim()) return;
+    if (!searchPanelState.query.trim()) return;
 
     try {
-      const searchResults = await search(query);
-      setResults(searchResults || []);
+      const searchResults = await search(searchPanelState.query);
+      searchPanelState.results = searchResults || [];
     } catch (error) {
       console.error('Search failed:', error);
     }
@@ -32,8 +38,8 @@ export function AISearchPanel({ onEntitySelect }: AISearchPanelProps) {
         <div className="relative">
           <input
             type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            value={state.query}
+            onChange={(e) => searchPanelState.query = e.target.value}
             placeholder="Search entities, relationships, types..."
             className="w-full pl-4 pr-10 h-10 bg-black/70 backdrop-blur-sm text-white placeholder-gray-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-white/50 transition-all"
             data-test="search-input"
@@ -50,10 +56,10 @@ export function AISearchPanel({ onEntitySelect }: AISearchPanelProps) {
         </div>
       </form>
 
-      {results.length > 0 && (
+      {state.results.length > 0 && (
         <div className="absolute mt-2 w-full bg-white/90 backdrop-blur-md rounded-lg shadow-lg border border-gray-200 p-2 max-h-64 overflow-y-auto" data-test="search-results">
-          <p className="text-xs text-gray-600 mb-2" data-test="results-count">Found {results.length} results</p>
-          {results.map((entity) => (
+          <p className="text-xs text-gray-600 mb-2" data-test="results-count">Found {state.results.length} results</p>
+          {state.results.map((entity) => (
             <div
               key={entity.id}
               className="p-2 hover:bg-gray-100 rounded cursor-pointer transition-colors"

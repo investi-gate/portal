@@ -1,26 +1,32 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
+import { proxy, useSnapshot } from 'valtio';
 import { useAIAnalysis } from '@/hooks/useDatabase';
 import { EntityScore, RelationPattern, ClusterInfo, SuggestedRelation } from '@/lib/ai-analysis';
 
+// Create a proxy for the analysis panel state
+const analysisPanelState = proxy({
+  activeTab: 'importance' as 'importance' | 'patterns' | 'clusters' | 'suggestions',
+  analysisResults: null as any,
+});
+
 export function AnalysisPanel() {
   const { analyze, loading } = useAIAnalysis();
-  const [activeTab, setActiveTab] = useState<'importance' | 'patterns' | 'clusters' | 'suggestions'>('importance');
-  const [analysisResults, setAnalysisResults] = useState<any>(null);
+  const state = useSnapshot(analysisPanelState);
 
   useEffect(() => {
     const runAnalysis = async () => {
       try {
-        const results = await analyze(activeTab);
-        setAnalysisResults(results);
+        const results = await analyze(analysisPanelState.activeTab);
+        analysisPanelState.analysisResults = results;
       } catch (error) {
         console.error('Analysis failed:', error);
       }
     };
 
     runAnalysis();
-  }, [activeTab, analyze]);
+  }, [state.activeTab, analyze]);
 
   const renderImportance = (scores: EntityScore[]) => (
     <div className="space-y-2">
@@ -111,9 +117,9 @@ export function AnalysisPanel() {
       
       <div className="flex gap-2 mb-4 border-b">
         <button
-          onClick={() => setActiveTab('importance')}
+          onClick={() => analysisPanelState.activeTab = 'importance'}
           className={`px-3 py-2 text-sm font-medium ${
-            activeTab === 'importance' 
+            state.activeTab === 'importance' 
               ? 'text-blue-600 border-b-2 border-blue-600' 
               : 'text-gray-600 hover:text-gray-800'
           }`}
@@ -121,9 +127,9 @@ export function AnalysisPanel() {
           Importance
         </button>
         <button
-          onClick={() => setActiveTab('patterns')}
+          onClick={() => analysisPanelState.activeTab = 'patterns'}
           className={`px-3 py-2 text-sm font-medium ${
-            activeTab === 'patterns' 
+            state.activeTab === 'patterns' 
               ? 'text-blue-600 border-b-2 border-blue-600' 
               : 'text-gray-600 hover:text-gray-800'
           }`}
@@ -131,9 +137,9 @@ export function AnalysisPanel() {
           Patterns
         </button>
         <button
-          onClick={() => setActiveTab('clusters')}
+          onClick={() => analysisPanelState.activeTab = 'clusters'}
           className={`px-3 py-2 text-sm font-medium ${
-            activeTab === 'clusters' 
+            state.activeTab === 'clusters' 
               ? 'text-blue-600 border-b-2 border-blue-600' 
               : 'text-gray-600 hover:text-gray-800'
           }`}
@@ -141,9 +147,9 @@ export function AnalysisPanel() {
           Clusters
         </button>
         <button
-          onClick={() => setActiveTab('suggestions')}
+          onClick={() => analysisPanelState.activeTab = 'suggestions'}
           className={`px-3 py-2 text-sm font-medium ${
-            activeTab === 'suggestions' 
+            state.activeTab === 'suggestions' 
               ? 'text-blue-600 border-b-2 border-blue-600' 
               : 'text-gray-600 hover:text-gray-800'
           }`}
@@ -155,16 +161,16 @@ export function AnalysisPanel() {
       <div className="max-h-96 overflow-y-auto">
         {loading ? (
           <div className="text-center py-8 text-gray-500">Analyzing...</div>
-        ) : analysisResults ? (
+        ) : state.analysisResults ? (
           <>
-            {activeTab === 'importance' && analysisResults.entityScores && 
-              renderImportance(analysisResults.entityScores)}
-            {activeTab === 'patterns' && analysisResults.relationPatterns && 
-              renderPatterns(analysisResults.relationPatterns)}
-            {activeTab === 'clusters' && analysisResults.clusters && 
-              renderClusters(analysisResults.clusters)}
-            {activeTab === 'suggestions' && analysisResults.suggestedRelations && 
-              renderSuggestions(analysisResults.suggestedRelations)}
+            {state.activeTab === 'importance' && state.analysisResults.entityScores && 
+              renderImportance(state.analysisResults.entityScores)}
+            {state.activeTab === 'patterns' && state.analysisResults.relationPatterns && 
+              renderPatterns(state.analysisResults.relationPatterns)}
+            {state.activeTab === 'clusters' && state.analysisResults.clusters && 
+              renderClusters(state.analysisResults.clusters)}
+            {state.activeTab === 'suggestions' && state.analysisResults.suggestedRelations && 
+              renderSuggestions(state.analysisResults.suggestedRelations)}
           </>
         ) : (
           <div className="text-center py-8 text-gray-500">No data available</div>

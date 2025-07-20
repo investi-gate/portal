@@ -1,25 +1,62 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useEffect, useCallback, useMemo } from 'react';
+import { proxy, useSnapshot } from 'valtio';
 import { Entity, Relation, EntityTypeFacialData, EntityTypeTextData, BucketedResponse, Bucket } from '@/db/types';
 
+// State proxies for each hook
+const entitiesState = proxy<{
+  bucket: Bucket | null;
+  entityIds: string[];
+  loading: boolean;
+  error: Error | null;
+}>({
+  bucket: null,
+  entityIds: [],
+  loading: true,
+  error: null
+});
+
+const relationsState = proxy<{
+  relations: Relation[];
+  loading: boolean;
+  error: Error | null;
+}>({
+  relations: [],
+  loading: true,
+  error: null
+});
+
+const entityTypeDataState = proxy<{
+  loading: boolean;
+  error: Error | null;
+}>({
+  loading: false,
+  error: null
+});
+
+const aiAnalysisState = proxy<{
+  loading: boolean;
+  error: Error | null;
+}>({
+  loading: false,
+  error: null
+});
+
 export function useEntities() {
-  const [bucket, setBucket] = useState<Bucket | null>(null);
-  const [entityIds, setEntityIds] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+  const snapshot = useSnapshot(entitiesState);
 
   const fetchEntities = useCallback(async () => {
     try {
-      setLoading(true);
+      entitiesState.loading = true;
       const response = await fetch('/api/entities');
       if (!response.ok) throw new Error('Failed to fetch entities');
       const data: BucketedResponse<string[]> = await response.json();
-      setBucket(data.bucket);
-      setEntityIds(data.data);
-      setError(null);
+      entitiesState.bucket = data.bucket;
+      entitiesState.entityIds = data.data;
+      entitiesState.error = null;
     } catch (err) {
-      setError(err as Error);
+      entitiesState.error = err as Error;
     } finally {
-      setLoading(false);
+      entitiesState.loading = false;
     }
   }, []);
 
@@ -42,7 +79,7 @@ export function useEntities() {
       await fetchEntities();
       return data.entity;
     } catch (err) {
-      setError(err as Error);
+      entitiesState.error = err as Error;
       throw err;
     }
   }, [fetchEntities]);
@@ -63,7 +100,7 @@ export function useEntities() {
       await fetchEntities();
       return data.entity;
     } catch (err) {
-      setError(err as Error);
+      entitiesState.error = err as Error;
       throw err;
     }
   }, [fetchEntities]);
@@ -78,7 +115,7 @@ export function useEntities() {
       await fetchEntities();
       return true;
     } catch (err) {
-      setError(err as Error);
+      entitiesState.error = err as Error;
       throw err;
     }
   }, [fetchEntities]);
@@ -89,14 +126,14 @@ export function useEntities() {
 
   // Helper to get entities with their text content
   const entitiesWithTextContent = useMemo(() => {
-    if (!bucket) return [];
+    if (!snapshot.bucket) return [];
     
-    return entityIds.map(id => {
-      const entity = bucket.entities[id];
+    return snapshot.entityIds.map(id => {
+      const entity = snapshot.bucket.entities[id];
       if (!entity) return null;
       
       const textContent = entity.type_text_data_id 
-        ? bucket.entity_type_text_data[entity.type_text_data_id]?.content 
+        ? snapshot.bucket.entity_type_text_data[entity.type_text_data_id]?.content 
         : undefined;
       
       return {
@@ -104,13 +141,13 @@ export function useEntities() {
         text_content: textContent
       };
     }).filter(Boolean) as (Entity & { text_content?: string })[];
-  }, [bucket, entityIds]);
+  }, [snapshot.bucket, snapshot.entityIds]);
 
   return {
-    bucket,
+    bucket: snapshot.bucket,
     entities: entitiesWithTextContent,
-    loading,
-    error,
+    loading: snapshot.loading,
+    error: snapshot.error,
     refetch: fetchEntities,
     createEntity,
     updateEntity,
@@ -120,22 +157,20 @@ export function useEntities() {
 
 
 export function useRelations() {
-  const [relations, setRelations] = useState<Relation[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+  const snapshot = useSnapshot(relationsState);
 
   const fetchRelations = useCallback(async () => {
     try {
-      setLoading(true);
+      relationsState.loading = true;
       const response = await fetch('/api/relations');
       if (!response.ok) throw new Error('Failed to fetch relations');
       const data = await response.json();
-      setRelations(data.relations);
-      setError(null);
+      relationsState.relations = data.relations;
+      relationsState.error = null;
     } catch (err) {
-      setError(err as Error);
+      relationsState.error = err as Error;
     } finally {
-      setLoading(false);
+      relationsState.loading = false;
     }
   }, []);
 
@@ -154,10 +189,10 @@ export function useRelations() {
       });
       if (!response.ok) throw new Error('Failed to create relation');
       const data = await response.json();
-      setRelations(prev => [...prev, data.relation]);
+      relationsState.relations = [...relationsState.relations, data.relation];
       return data.relation;
     } catch (err) {
-      setError(err as Error);
+      relationsState.error = err as Error;
       throw err;
     }
   }, []);
@@ -178,11 +213,11 @@ export function useRelations() {
       if (!response.ok) throw new Error('Failed to update relation');
       const data = await response.json();
       if (data.relation) {
-        setRelations(prev => prev.map(r => r.id === id ? data.relation : r));
+        relationsState.relations = relationsState.relations.map(r => r.id === id ? data.relation : r);
       }
       return data.relation;
     } catch (err) {
-      setError(err as Error);
+      relationsState.error = err as Error;
       throw err;
     }
   }, []);
@@ -193,10 +228,10 @@ export function useRelations() {
         method: 'DELETE',
       });
       if (!response.ok) throw new Error('Failed to delete relation');
-      setRelations(prev => prev.filter(r => r.id !== id));
+      relationsState.relations = relationsState.relations.filter(r => r.id !== id);
       return true;
     } catch (err) {
-      setError(err as Error);
+      relationsState.error = err as Error;
       throw err;
     }
   }, []);
@@ -208,7 +243,7 @@ export function useRelations() {
       const data = await response.json();
       return data.relations;
     } catch (err) {
-      setError(err as Error);
+      relationsState.error = err as Error;
       throw err;
     }
   }, []);
@@ -218,9 +253,9 @@ export function useRelations() {
   }, [fetchRelations]);
 
   return {
-    relations,
-    loading,
-    error,
+    relations: snapshot.relations,
+    loading: snapshot.loading,
+    error: snapshot.error,
     refetch: fetchRelations,
     createRelation,
     updateRelation,
@@ -230,12 +265,11 @@ export function useRelations() {
 }
 
 export function useEntityTypeData() {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
+  const snapshot = useSnapshot(entityTypeDataState);
 
   const getTextData = useCallback(async (id: string): Promise<EntityTypeTextData | null> => {
     try {
-      setLoading(true);
+      entityTypeDataState.loading = true;
       const response = await fetch(`/api/entity-types/text/${id}`);
       if (!response.ok) {
         if (response.status === 404) return null;
@@ -244,16 +278,16 @@ export function useEntityTypeData() {
       const data = await response.json();
       return data.textData;
     } catch (err) {
-      setError(err as Error);
+      entityTypeDataState.error = err as Error;
       throw err;
     } finally {
-      setLoading(false);
+      entityTypeDataState.loading = false;
     }
   }, []);
 
   const getFacialData = useCallback(async (id: string): Promise<EntityTypeFacialData | null> => {
     try {
-      setLoading(true);
+      entityTypeDataState.loading = true;
       const response = await fetch(`/api/entity-types/facial/${id}`);
       if (!response.ok) {
         if (response.status === 404) return null;
@@ -262,28 +296,27 @@ export function useEntityTypeData() {
       const data = await response.json();
       return data.facialData;
     } catch (err) {
-      setError(err as Error);
+      entityTypeDataState.error = err as Error;
       throw err;
     } finally {
-      setLoading(false);
+      entityTypeDataState.loading = false;
     }
   }, []);
 
   return {
     getTextData,
     getFacialData,
-    loading,
-    error
+    loading: snapshot.loading,
+    error: snapshot.error
   };
 }
 
 export function useAIAnalysis() {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
+  const snapshot = useSnapshot(aiAnalysisState);
 
   const analyze = useCallback(async (type: 'all' | 'importance' | 'patterns' | 'clusters' | 'suggestions' = 'all') => {
     try {
-      setLoading(true);
+      aiAnalysisState.loading = true;
       const response = await fetch('/api/ai/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -293,32 +326,32 @@ export function useAIAnalysis() {
       const data = await response.json();
       return data.results;
     } catch (err) {
-      setError(err as Error);
+      aiAnalysisState.error = err as Error;
       throw err;
     } finally {
-      setLoading(false);
+      aiAnalysisState.loading = false;
     }
   }, []);
 
   const search = useCallback(async (query: string) => {
     try {
-      setLoading(true);
+      aiAnalysisState.loading = true;
       const response = await fetch(`/api/ai/search?q=${encodeURIComponent(query)}`);
       if (!response.ok) throw new Error('Failed to search');
       const data = await response.json();
       return data.results;
     } catch (err) {
-      setError(err as Error);
+      aiAnalysisState.error = err as Error;
       throw err;
     } finally {
-      setLoading(false);
+      aiAnalysisState.loading = false;
     }
   }, []);
 
   return {
     analyze,
     search,
-    loading,
-    error
+    loading: snapshot.loading,
+    error: snapshot.error
   };
 }

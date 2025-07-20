@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useRef, useEffect } from 'react';
+import { proxy, useSnapshot } from 'valtio';
 import { createPortal } from 'react-dom';
 import { X, Crop, Save } from 'lucide-react';
 
@@ -24,20 +25,31 @@ interface CropSelection {
   height: number;
 }
 
+// Create the state proxy outside the component
+const imageCropState = proxy<{
+  selection: CropSelection | null;
+  isSelecting: boolean;
+  startPoint: { x: number; y: number };
+  label: string;
+  isCreating: boolean;
+}>({
+  selection: null,
+  isSelecting: false,
+  startPoint: { x: 0, y: 0 },
+  label: '',
+  isCreating: false,
+});
+
 export function ImageCropDialog({ isOpen, onClose, imageUrl, onCropCreate }: ImageCropDialogProps) {
-  const [selection, setSelection] = useState<CropSelection | null>(null);
-  const [isSelecting, setIsSelecting] = useState(false);
-  const [startPoint, setStartPoint] = useState({ x: 0, y: 0 });
-  const [label, setLabel] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
+  const state = useSnapshot(imageCropState);
   const imageRef = useRef<HTMLImageElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!isOpen) {
-      setSelection(null);
-      setLabel('');
-      setIsSelecting(false);
+      imageCropState.selection = null;
+      imageCropState.label = '';
+      imageCropState.isSelecting = false;
     }
   }, [isOpen]);
 
@@ -52,34 +64,34 @@ export function ImageCropDialog({ isOpen, onClose, imageUrl, onCropCreate }: Ima
 
   const handleMouseDown = (e: React.MouseEvent) => {
     const pos = getMousePosition(e);
-    setStartPoint(pos);
-    setIsSelecting(true);
-    setSelection({
+    imageCropState.startPoint = pos;
+    imageCropState.isSelecting = true;
+    imageCropState.selection = {
       x: pos.x,
       y: pos.y,
       width: 0,
       height: 0,
-    });
+    };
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isSelecting) return;
+    if (!state.isSelecting) return;
     
     const pos = getMousePosition(e);
-    const x = Math.min(startPoint.x, pos.x);
-    const y = Math.min(startPoint.y, pos.y);
-    const width = Math.abs(pos.x - startPoint.x);
-    const height = Math.abs(pos.y - startPoint.y);
+    const x = Math.min(state.startPoint.x, pos.x);
+    const y = Math.min(state.startPoint.y, pos.y);
+    const width = Math.abs(pos.x - state.startPoint.x);
+    const height = Math.abs(pos.y - state.startPoint.y);
     
-    setSelection({ x, y, width, height });
+    imageCropState.selection = { x, y, width, height };
   };
 
   const handleMouseUp = () => {
-    setIsSelecting(false);
+    imageCropState.isSelecting = false;
   };
 
   const handleSave = async () => {
-    if (!selection || !imageRef.current) return;
+    if (!state.selection || !imageRef.current) return;
     
     // Convert pixel coordinates to actual image coordinates
     const img = imageRef.current;
@@ -87,21 +99,21 @@ export function ImageCropDialog({ isOpen, onClose, imageUrl, onCropCreate }: Ima
     const scaleY = img.naturalHeight / img.height;
     
     const cropData = {
-      x: Math.round(selection.x * scaleX),
-      y: Math.round(selection.y * scaleY),
-      width: Math.round(selection.width * scaleX),
-      height: Math.round(selection.height * scaleY),
-      label: label.trim() || undefined,
+      x: Math.round(state.selection.x * scaleX),
+      y: Math.round(state.selection.y * scaleY),
+      width: Math.round(state.selection.width * scaleX),
+      height: Math.round(state.selection.height * scaleY),
+      label: state.label.trim() || undefined,
     };
     
-    setIsCreating(true);
+    imageCropState.isCreating = true;
     try {
       await onCropCreate(cropData);
       onClose();
     } catch (error) {
       console.error('Failed to create crop:', error);
     } finally {
-      setIsCreating(false);
+      imageCropState.isCreating = false;
     }
   };
 
@@ -163,26 +175,26 @@ export function ImageCropDialog({ isOpen, onClose, imageUrl, onCropCreate }: Ima
             />
             
             {/* Selection Box */}
-            {selection && selection.width > 0 && selection.height > 0 && (
+            {state.selection && state.selection.width > 0 && state.selection.height > 0 && (
               <div
                 className="absolute border-2 border-blue-500 bg-blue-500/20 pointer-events-none"
                 style={{
-                  left: `${selection.x}px`,
-                  top: `${selection.y}px`,
-                  width: `${selection.width}px`,
-                  height: `${selection.height}px`,
+                  left: `${state.selection.x}px`,
+                  top: `${state.selection.y}px`,
+                  width: `${state.selection.width}px`,
+                  height: `${state.selection.height}px`,
                 }}
                 data-test="crop-selection-box"
               >
                 <div className="absolute -top-6 left-0 text-xs bg-blue-500 text-white px-2 py-1 rounded">
-                  {selection.width} × {selection.height}
+                  {state.selection.width} × {state.selection.height}
                 </div>
               </div>
             )}
           </div>
 
           {/* Label Input */}
-          {selection && selection.width > 0 && selection.height > 0 && (
+          {state.selection && state.selection.width > 0 && state.selection.height > 0 && (
             <div className="space-y-2">
               <label htmlFor="crop-label" className="block text-sm font-medium text-gray-700">
                 Label (optional)
@@ -190,8 +202,8 @@ export function ImageCropDialog({ isOpen, onClose, imageUrl, onCropCreate }: Ima
               <input
                 id="crop-label"
                 type="text"
-                value={label}
-                onChange={(e) => setLabel(e.target.value)}
+                value={state.label}
+                onChange={(e) => imageCropState.label = e.target.value}
                 placeholder="e.g., Face, Logo, Text Region"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 data-test="crop-label-input"
@@ -205,19 +217,19 @@ export function ImageCropDialog({ isOpen, onClose, imageUrl, onCropCreate }: Ima
           <button
             onClick={onClose}
             className="px-4 py-2 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors"
-            disabled={isCreating}
+            disabled={state.isCreating}
             data-test="crop-cancel-button"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
-            disabled={!selection || selection.width === 0 || selection.height === 0 || isCreating}
+            disabled={!state.selection || state.selection.width === 0 || state.selection.height === 0 || state.isCreating}
             className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             data-test="crop-save-button"
           >
             <Save className="w-4 h-4" />
-            {isCreating ? 'Creating...' : 'Create Portion'}
+            {state.isCreating ? 'Creating...' : 'Create Portion'}
           </button>
         </div>
       </div>

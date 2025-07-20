@@ -1,12 +1,18 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { proxy, useSnapshot } from 'valtio';
 import { Handle, Position, NodeProps } from '@xyflow/react';
 import { EntityNodeData } from '@/types/react-flow';
 import { User, FileText, Image, Crop, Scissors } from 'lucide-react';
 import { ImageCropDialog } from './ImageCropDialog';
 
+// Create a proxy for the entity node state
+const entityNodeState = proxy({
+  showCropDialog: false,
+});
+
 export function EntityNode({ data }: NodeProps<EntityNodeData>) {
   const { entity, label, importance = 0, imageUrl } = data;
-  const [showCropDialog, setShowCropDialog] = useState(false);
+  const state = useSnapshot(entityNodeState);
   
   const getImportanceSize = () => {
     const baseSize = 160;
@@ -139,7 +145,7 @@ export function EntityNode({ data }: NodeProps<EntityNodeData>) {
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                setShowCropDialog(true);
+                entityNodeState.showCropDialog = true;
               }}
               onMouseDown={(e) => e.stopPropagation()}
               className="absolute top-2 right-2 p-2 bg-white/90 hover:bg-white rounded-lg shadow-md opacity-0 group-hover:opacity-100 transition-opacity"
@@ -204,8 +210,8 @@ export function EntityNode({ data }: NodeProps<EntityNodeData>) {
       {/* Image Crop Dialog */}
       {entity.type_image_data_id && imageUrl && (
         <ImageCropDialog
-          isOpen={showCropDialog}
-          onClose={() => setShowCropDialog(false)}
+          isOpen={state.showCropDialog}
+          onClose={() => entityNodeState.showCropDialog = false}
           imageUrl={imageUrl}
           onCropCreate={handleCropCreate}
         />

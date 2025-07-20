@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useCallback, useEffect, useState, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react';
+import { proxy, useSnapshot } from 'valtio';
 import {
   ReactFlow,
   MiniMap,
@@ -40,23 +41,28 @@ interface InvestigationFlowProps {
   onRelationSelect?: (relation: Relation) => void;
 }
 
+// Create a proxy for the investigation flow state
+const investigationFlowState = proxy({
+  entityScores: [] as EntityScore[],
+});
+
 export function InvestigationFlow({ onEntitySelect, onRelationSelect }: InvestigationFlowProps) {
   const { entities, loading: entitiesLoading, bucket } = useEntities();
   const { relations, loading: relationsLoading } = useRelations();
   const { analyze } = useAIAnalysis();
+  const state = useSnapshot(investigationFlowState);
   
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const [entityScores, setEntityScores] = useState<EntityScore[]>([]);
 
 
   // Memoize the calculated nodes to prevent unnecessary recalculations
   const calculatedNodes = useMemo(() => {
     if (entities.length > 0 || relations.length > 0) {
-      return calculateGraphLayout(entities, relations, entityScores, bucket);
+      return calculateGraphLayout(entities, relations, investigationFlowState.entityScores, bucket);
     }
     return [];
-  }, [entities, relations, entityScores, bucket]);
+  }, [entities, relations, state.entityScores, bucket]);
 
   // Convert entities and relations to nodes and edges
   useEffect(() => {
@@ -65,7 +71,7 @@ export function InvestigationFlow({ onEntitySelect, onRelationSelect }: Investig
         try {
           const results = await analyze('importance');
           if (results.entityScores) {
-            setEntityScores(results.entityScores);
+            investigationFlowState.entityScores = results.entityScores;
           }
         } catch (error) {
           console.error('Failed to analyze entities:', error);

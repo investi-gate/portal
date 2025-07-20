@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
+import { proxy, useSnapshot } from 'valtio';
 import { InvestigationFlow } from '@/components/InvestigationFlow';
 import { AISearchPanel } from '@/components/AISearchPanel';
 import { DataPanel } from '@/components/DataPanel';
@@ -8,38 +9,43 @@ import { Plus } from 'lucide-react';
 import { Entity, Relation, EntityTypeTextData } from '@/db/types';
 import { useEntityTypeData } from '@/hooks/useDatabase';
 
+// Create a proxy for the page state
+const pageState = proxy({
+  selectedEntity: null as Entity | null,
+  selectedRelation: null as Relation | null,
+  selectedEntityTextData: null as EntityTypeTextData | null,
+  connectModalOpen: false,
+  preselectedItem: {} as { entity?: string; relation?: string; asSubject?: boolean },
+});
+
 export default function Home() {
-  const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null);
-  const [selectedRelation, setSelectedRelation] = useState<Relation | null>(null);
-  const [selectedEntityTextData, setSelectedEntityTextData] = useState<EntityTypeTextData | null>(null);
-  const [connectModalOpen, setConnectModalOpen] = useState(false);
-  const [preselectedItem, setPreselectedItem] = useState<{ entity?: string; relation?: string; asSubject?: boolean }>({});
+  const state = useSnapshot(pageState);
   const { getTextData } = useEntityTypeData();
 
   useEffect(() => {
     const fetchTextData = async () => {
-      if (selectedEntity?.type_text_data_id) {
+      if (pageState.selectedEntity?.type_text_data_id) {
         try {
-          const textData = await getTextData(selectedEntity.type_text_data_id);
-          setSelectedEntityTextData(textData);
+          const textData = await getTextData(pageState.selectedEntity.type_text_data_id);
+          pageState.selectedEntityTextData = textData;
         } catch (error) {
           console.error('Failed to fetch text data:', error);
-          setSelectedEntityTextData(null);
+          pageState.selectedEntityTextData = null;
         }
       } else {
-        setSelectedEntityTextData(null);
+        pageState.selectedEntityTextData = null;
       }
     };
 
     fetchTextData();
-  }, [selectedEntity, getTextData]);
+  }, [state.selectedEntity, getTextData]);
 
   return (
     <main className="w-screen h-screen relative overflow-hidden" data-test="main-container">
       {/* Main Investigation Flow - Full Screen */}
       <InvestigationFlow 
-        onEntitySelect={setSelectedEntity}
-        onRelationSelect={setSelectedRelation}
+        onEntitySelect={(entity) => pageState.selectedEntity = entity}
+        onRelationSelect={(relation) => pageState.selectedRelation = relation}
       />
 
 
@@ -48,37 +54,37 @@ export default function Home() {
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
             <div className="w-64">
-              <AISearchPanel onEntitySelect={setSelectedEntity} />
+              <AISearchPanel onEntitySelect={(entity) => pageState.selectedEntity = entity} />
             </div>
             <DataPanel 
-              preselectedEntity={connectModalOpen ? preselectedItem.entity : undefined}
-              preselectedRelation={connectModalOpen ? preselectedItem.relation : undefined}
-              preselectedAsSubject={preselectedItem.asSubject}
-              onOpen={() => setConnectModalOpen(false)}
+              preselectedEntity={state.connectModalOpen ? state.preselectedItem.entity : undefined}
+              preselectedRelation={state.connectModalOpen ? state.preselectedItem.relation : undefined}
+              preselectedAsSubject={state.preselectedItem.asSubject}
+              onOpen={() => pageState.connectModalOpen = false}
             />
           </div>
           
           {/* Selected Item Info */}
-          {(selectedEntity || selectedRelation) && (
+          {(state.selectedEntity || state.selectedRelation) && (
             <div className="bg-white/90 backdrop-blur-sm rounded-lg p-4 max-w-sm" data-test="selected-item-info">
-              {selectedEntity && (
+              {state.selectedEntity && (
                 <div data-test="selected-entity">
                   <h4 className="font-semibold text-sm mb-2">Selected Entity</h4>
-                  <p className="text-xs text-gray-600">ID: {selectedEntity.id}</p>
+                  <p className="text-xs text-gray-600">ID: {state.selectedEntity.id}</p>
                   <p className="text-xs text-gray-600">
-                    Types: {selectedEntity.type_facial_data_id && '👤 Facial'} 
-                    {selectedEntity.type_text_data_id && '📝 Text'}
+                    Types: {state.selectedEntity.type_facial_data_id && '👤 Facial'} 
+                    {state.selectedEntity.type_text_data_id && '📝 Text'}
                   </p>
-                  {selectedEntityTextData?.content && (
+                  {state.selectedEntityTextData?.content && (
                     <div className="mt-2" data-test="entity-text-content-display">
                       <p className="text-xs font-semibold text-gray-700">Text Content:</p>
-                      <p className="text-xs text-gray-600 mt-1 whitespace-pre-wrap">{selectedEntityTextData.content}</p>
+                      <p className="text-xs text-gray-600 mt-1 whitespace-pre-wrap">{state.selectedEntityTextData.content}</p>
                     </div>
                   )}
                   <button
                     onClick={() => {
-                      setPreselectedItem({ entity: selectedEntity.id, asSubject: true });
-                      setConnectModalOpen(true);
+                      pageState.preselectedItem = { entity: state.selectedEntity.id, asSubject: true };
+                      pageState.connectModalOpen = true;
                       // Trigger the DataPanel modal to open
                       setTimeout(() => {
                         const addButton = document.querySelector('[data-test="add-button"]') as HTMLButtonElement;
@@ -93,31 +99,31 @@ export default function Home() {
                   </button>
                 </div>
               )}
-              {selectedRelation && (
+              {state.selectedRelation && (
                 <div data-test="selected-relation">
                   <h4 className="font-semibold text-sm mb-2">Selected Relation</h4>
-                  <p className="text-xs text-gray-600">ID: {selectedRelation.id}</p>
-                  <p className="text-xs text-gray-600">Predicate: {selectedRelation.predicate}</p>
+                  <p className="text-xs text-gray-600">ID: {state.selectedRelation.id}</p>
+                  <p className="text-xs text-gray-600">Predicate: {state.selectedRelation.predicate}</p>
                   <div className="text-xs text-gray-600 mt-1">
                     <div>
-                      Subject: {selectedRelation.subject_entity_id ? (
-                        <>Entity: {selectedRelation.subject_entity_id.slice(0, 8)}</>
-                      ) : selectedRelation.subject_relation_id ? (
-                        <>Relation: {selectedRelation.subject_relation_id.slice(0, 8)}</>
+                      Subject: {state.selectedRelation.subject_entity_id ? (
+                        <>Entity: {state.selectedRelation.subject_entity_id.slice(0, 8)}</>
+                      ) : state.selectedRelation.subject_relation_id ? (
+                        <>Relation: {state.selectedRelation.subject_relation_id.slice(0, 8)}</>
                       ) : 'None'}
                     </div>
                     <div>
-                      Object: {selectedRelation.object_entity_id ? (
-                        <>Entity: {selectedRelation.object_entity_id.slice(0, 8)}</>
-                      ) : selectedRelation.object_relation_id ? (
-                        <>Relation: {selectedRelation.object_relation_id.slice(0, 8)}</>
+                      Object: {state.selectedRelation.object_entity_id ? (
+                        <>Entity: {state.selectedRelation.object_entity_id.slice(0, 8)}</>
+                      ) : state.selectedRelation.object_relation_id ? (
+                        <>Relation: {state.selectedRelation.object_relation_id.slice(0, 8)}</>
                       ) : 'None'}
                     </div>
                   </div>
                   <button
                     onClick={() => {
-                      setPreselectedItem({ relation: selectedRelation.id, asSubject: true });
-                      setConnectModalOpen(true);
+                      pageState.preselectedItem = { relation: state.selectedRelation.id, asSubject: true };
+                      pageState.connectModalOpen = true;
                       // Trigger the DataPanel modal to open
                       setTimeout(() => {
                         const addButton = document.querySelector('[data-test="add-button"]') as HTMLButtonElement;

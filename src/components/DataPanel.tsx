@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
+import { proxy, useSnapshot } from 'valtio';
 import { useEntities, useRelations } from '@/hooks/useDatabase';
 import {
   Dialog,
@@ -23,37 +24,42 @@ interface DataPanelProps {
   onOpen?: () => void;
 }
 
+// Create state proxy object
+const dataPanelState = proxy({
+  modalOpen: false,
+  activeTab: 'entity' as 'entity' | 'relation',
+  entityType: 'facial' as 'facial' | 'text' | 'image',
+  textContent: '',
+  imageMediaId: '',
+  imageCaption: '',
+  imageAltText: '',
+  selectedFile: null as File | null,
+  isUploading: false,
+  uploadError: '',
+  selectedSubject: '',
+  selectedObject: '',
+  predicate: '',
+  subjectType: 'entity' as 'entity' | 'relation',
+  objectType: 'entity' as 'entity' | 'relation',
+});
+
 export function DataPanel({ preselectedEntity, preselectedRelation, preselectedAsSubject = true, onOpen }: DataPanelProps) {
   const { entities, createEntity, deleteEntity } = useEntities();
   const { relations, createRelation, deleteRelation } = useRelations();
-  const [modalOpen, setModalOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'entity' | 'relation'>('entity');
-  const [entityType, setEntityType] = useState<'facial' | 'text' | 'image'>('facial');
-  const [textContent, setTextContent] = useState('');
-  const [imageMediaId, setImageMediaId] = useState('');
-  const [imageCaption, setImageCaption] = useState('');
-  const [imageAltText, setImageAltText] = useState('');
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadError, setUploadError] = useState('');
-  const [selectedSubject, setSelectedSubject] = useState('');
-  const [selectedObject, setSelectedObject] = useState('');
-  const [predicate, setPredicate] = useState('');
-  const [subjectType, setSubjectType] = useState<'entity' | 'relation'>('entity');
-  const [objectType, setObjectType] = useState<'entity' | 'relation'>('entity');
+  const state = useSnapshot(dataPanelState);
 
   const handleFileUpload = async () => {
-    if (!selectedFile) {
-      setUploadError('Please select a file');
+    if (!dataPanelState.selectedFile) {
+      dataPanelState.uploadError = 'Please select a file';
       return null;
     }
 
-    setIsUploading(true);
-    setUploadError('');
+    dataPanelState.isUploading = true;
+    dataPanelState.uploadError = '';
 
     try {
       const formData = new FormData();
-      formData.append('file', selectedFile);
+      formData.append('file', dataPanelState.selectedFile);
 
       const response = await fetch('/api/media', {
         method: 'POST',
@@ -66,14 +72,14 @@ export function DataPanel({ preselectedEntity, preselectedRelation, preselectedA
       }
 
       const data = await response.json();
-      setImageMediaId(data.media.id);
+      dataPanelState.imageMediaId = data.media.id;
       return data.media.id;
     } catch (error) {
       console.error('Upload error:', error);
-      setUploadError(error instanceof Error ? error.message : 'Upload failed');
+      dataPanelState.uploadError = error instanceof Error ? error.message : 'Upload failed';
       return null;
     } finally {
-      setIsUploading(false);
+      dataPanelState.isUploading = false;
     }
   };
 
@@ -84,7 +90,7 @@ export function DataPanel({ preselectedEntity, preselectedRelation, preselectedA
       let imageId: string | undefined;
 
       // Create entity type records first
-      if (entityType === 'facial') {
+      if (dataPanelState.entityType === 'facial') {
         const facialResponse = await fetch('/api/entity-types/facial', {
           method: 'POST',
         });
@@ -93,8 +99,8 @@ export function DataPanel({ preselectedEntity, preselectedRelation, preselectedA
         facialId = facialData.facialData.id;
       }
 
-      if (entityType === 'text') {
-        if (!textContent || textContent.trim() === '') {
+      if (dataPanelState.entityType === 'text') {
+        if (!dataPanelState.textContent || dataPanelState.textContent.trim() === '') {
           alert('Text content is required for text entities');
           return;
         }
@@ -104,7 +110,7 @@ export function DataPanel({ preselectedEntity, preselectedRelation, preselectedA
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ content: textContent }),
+          body: JSON.stringify({ content: dataPanelState.textContent }),
         });
         
         if (!textResponse.ok) {
@@ -117,11 +123,11 @@ export function DataPanel({ preselectedEntity, preselectedRelation, preselectedA
         textId = textData.textData.id;
       }
 
-      if (entityType === 'image') {
-        let mediaId = imageMediaId;
+      if (dataPanelState.entityType === 'image') {
+        let mediaId = dataPanelState.imageMediaId;
         
         // If no media ID but file selected, upload first
-        if (!mediaId && selectedFile) {
+        if (!mediaId && dataPanelState.selectedFile) {
           mediaId = await handleFileUpload();
           if (!mediaId) {
             return; // Upload failed
@@ -140,8 +146,8 @@ export function DataPanel({ preselectedEntity, preselectedRelation, preselectedA
           },
           body: JSON.stringify({ 
             media_id: mediaId,
-            caption: imageCaption || null,
-            alt_text: imageAltText || null
+            caption: dataPanelState.imageCaption || null,
+            alt_text: dataPanelState.imageAltText || null
           }),
         });
         
@@ -166,72 +172,72 @@ export function DataPanel({ preselectedEntity, preselectedRelation, preselectedA
         type_image_data_id: imageId,
       });
       
-      setModalOpen(false);
+      dataPanelState.modalOpen = false;
       // Reset all form state
-      setActiveTab('entity');
-      setEntityType('facial');
-      setTextContent('');
-      setImageMediaId('');
-      setImageCaption('');
-      setImageAltText('');
-      setSelectedFile(null);
-      setUploadError('');
-      setSelectedSubject('');
-      setSelectedObject('');
-      setPredicate('');
-      setSubjectType('entity');
-      setObjectType('entity');
+      dataPanelState.activeTab = 'entity';
+      dataPanelState.entityType = 'facial';
+      dataPanelState.textContent = '';
+      dataPanelState.imageMediaId = '';
+      dataPanelState.imageCaption = '';
+      dataPanelState.imageAltText = '';
+      dataPanelState.selectedFile = null;
+      dataPanelState.uploadError = '';
+      dataPanelState.selectedSubject = '';
+      dataPanelState.selectedObject = '';
+      dataPanelState.predicate = '';
+      dataPanelState.subjectType = 'entity';
+      dataPanelState.objectType = 'entity';
     } catch (error) {
       console.error('Failed to create entity:', error);
     }
   };
 
   const handleCreateRelation = async () => {
-    if (!selectedSubject || !selectedObject || !predicate) return;
+    if (!dataPanelState.selectedSubject || !dataPanelState.selectedObject || !dataPanelState.predicate) return;
 
     try {
       const relationData: any = {
-        predicate: predicate,
+        predicate: dataPanelState.predicate,
       };
 
       // Set subject based on type
-      if (subjectType === 'entity') {
-        relationData.subject_entity_id = selectedSubject;
+      if (dataPanelState.subjectType === 'entity') {
+        relationData.subject_entity_id = dataPanelState.selectedSubject;
       } else {
-        relationData.subject_relation_id = selectedSubject;
+        relationData.subject_relation_id = dataPanelState.selectedSubject;
       }
 
       // Set object based on type
-      if (objectType === 'entity') {
-        relationData.object_entity_id = selectedObject;
+      if (dataPanelState.objectType === 'entity') {
+        relationData.object_entity_id = dataPanelState.selectedObject;
       } else {
-        relationData.object_relation_id = selectedObject;
+        relationData.object_relation_id = dataPanelState.selectedObject;
       }
 
       await createRelation(relationData);
       
-      setModalOpen(false);
+      dataPanelState.modalOpen = false;
       // Reset all form state
-      setActiveTab('entity');
-      setEntityType('facial');
-      setTextContent('');
-      setImageMediaId('');
-      setImageCaption('');
-      setImageAltText('');
-      setSelectedFile(null);
-      setUploadError('');
-      setSelectedSubject('');
-      setSelectedObject('');
-      setPredicate('');
-      setSubjectType('entity');
-      setObjectType('entity');
+      dataPanelState.activeTab = 'entity';
+      dataPanelState.entityType = 'facial';
+      dataPanelState.textContent = '';
+      dataPanelState.imageMediaId = '';
+      dataPanelState.imageCaption = '';
+      dataPanelState.imageAltText = '';
+      dataPanelState.selectedFile = null;
+      dataPanelState.uploadError = '';
+      dataPanelState.selectedSubject = '';
+      dataPanelState.selectedObject = '';
+      dataPanelState.predicate = '';
+      dataPanelState.subjectType = 'entity';
+      dataPanelState.objectType = 'entity';
     } catch (error) {
       console.error('Failed to create relation:', error);
     }
   };
 
   const handleCreate = () => {
-    if (activeTab === 'entity') {
+    if (dataPanelState.activeTab === 'entity') {
       handleCreateEntity();
     } else {
       handleCreateRelation();
@@ -242,46 +248,46 @@ export function DataPanel({ preselectedEntity, preselectedRelation, preselectedA
   const handleDialogOpenChange = (open: boolean) => {
     if (open && (preselectedEntity || preselectedRelation)) {
       // Set preselected values when opening
-      setActiveTab('relation');
+      dataPanelState.activeTab = 'relation';
       
       if (preselectedEntity) {
         if (preselectedAsSubject) {
-          setSubjectType('entity');
-          setSelectedSubject(preselectedEntity);
+          dataPanelState.subjectType = 'entity';
+          dataPanelState.selectedSubject = preselectedEntity;
         } else {
-          setObjectType('entity');
-          setSelectedObject(preselectedEntity);
+          dataPanelState.objectType = 'entity';
+          dataPanelState.selectedObject = preselectedEntity;
         }
       } else if (preselectedRelation) {
         if (preselectedAsSubject) {
-          setSubjectType('relation');
-          setSelectedSubject(preselectedRelation);
+          dataPanelState.subjectType = 'relation';
+          dataPanelState.selectedSubject = preselectedRelation;
         } else {
-          setObjectType('relation');
-          setSelectedObject(preselectedRelation);
+          dataPanelState.objectType = 'relation';
+          dataPanelState.selectedObject = preselectedRelation;
         }
       }
     } else if (!open) {
       // Reset all form state when closing
-      setActiveTab('entity');
-      setEntityType('facial');
-      setTextContent('');
-      setImageMediaId('');
-      setImageCaption('');
-      setImageAltText('');
-      setSelectedFile(null);
-      setUploadError('');
-      setSelectedSubject('');
-      setSelectedObject('');
-      setPredicate('');
-      setSubjectType('entity');
-      setObjectType('entity');
+      dataPanelState.activeTab = 'entity';
+      dataPanelState.entityType = 'facial';
+      dataPanelState.textContent = '';
+      dataPanelState.imageMediaId = '';
+      dataPanelState.imageCaption = '';
+      dataPanelState.imageAltText = '';
+      dataPanelState.selectedFile = null;
+      dataPanelState.uploadError = '';
+      dataPanelState.selectedSubject = '';
+      dataPanelState.selectedObject = '';
+      dataPanelState.predicate = '';
+      dataPanelState.subjectType = 'entity';
+      dataPanelState.objectType = 'entity';
     }
-    setModalOpen(open);
+    dataPanelState.modalOpen = open;
   };
 
   return (
-    <Dialog open={modalOpen} onOpenChange={handleDialogOpenChange}>
+    <Dialog open={state.modalOpen} onOpenChange={handleDialogOpenChange}>
       <DialogTrigger asChild>
         <button
           data-test="add-button"
@@ -302,7 +308,7 @@ export function DataPanel({ preselectedEntity, preselectedRelation, preselectedA
           </DialogDescription>
         </DialogHeader>
         
-        <Tabs value={activeTab} onValueChange={(value: string) => setActiveTab(value as 'entity' | 'relation')} className="w-full">
+        <Tabs value={state.activeTab} onValueChange={(value: string) => dataPanelState.activeTab = value as 'entity' | 'relation'} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="entity" data-test="tab-entity">
               <User className="h-4 w-4 mr-2" />
@@ -315,7 +321,7 @@ export function DataPanel({ preselectedEntity, preselectedRelation, preselectedA
           </TabsList>
           
           <TabsContent value="entity" className="mt-4">
-            <Tabs value={entityType} onValueChange={(value: string) => setEntityType(value as 'facial' | 'text' | 'image')} className="w-full">
+            <Tabs value={state.entityType} onValueChange={(value: string) => dataPanelState.entityType = value as 'facial' | 'text' | 'image'} className="w-full">
               <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="facial" data-test="entity-type-facial" className="flex items-center gap-2">
                   <User className="h-4 w-4" />
@@ -345,8 +351,8 @@ export function DataPanel({ preselectedEntity, preselectedRelation, preselectedA
                   <div>
                     <label className="text-sm font-medium text-gray-700">Text Content <span className="text-red-500">*</span></label>
                     <Textarea
-                      value={textContent}
-                      onChange={(e) => setTextContent(e.target.value)}
+                      value={state.textContent}
+                      onChange={(e) => dataPanelState.textContent = e.target.value}
                       placeholder="Enter text content for this entity..."
                       className="mt-1 w-full"
                       rows={4}
@@ -380,8 +386,8 @@ export function DataPanel({ preselectedEntity, preselectedRelation, preselectedA
                             onChange={(e) => {
                               const file = e.target.files?.[0];
                               if (file) {
-                                setSelectedFile(file);
-                                setUploadError('');
+                                dataPanelState.selectedFile = file;
+                                dataPanelState.uploadError = '';
                               }
                             }}
                             data-test="entity-image-file-input"
@@ -392,14 +398,14 @@ export function DataPanel({ preselectedEntity, preselectedRelation, preselectedA
                         </p>
                       </div>
                     </div>
-                    {selectedFile && (
+                    {state.selectedFile && (
                       <div className="mt-3 text-sm text-gray-600">
-                        Selected: {selectedFile.name}
+                        Selected: {state.selectedFile.name}
                       </div>
                     )}
-                    {uploadError && (
+                    {state.uploadError && (
                       <div className="mt-2 text-sm text-red-600">
-                        {uploadError}
+                        {state.uploadError}
                       </div>
                     )}
                   </div>
@@ -417,11 +423,11 @@ export function DataPanel({ preselectedEntity, preselectedRelation, preselectedA
                     <label className="text-sm font-medium text-gray-700">Media ID</label>
                     <input
                       type="text"
-                      value={imageMediaId}
-                      onChange={(e) => setImageMediaId(e.target.value)}
+                      value={state.imageMediaId}
+                      onChange={(e) => dataPanelState.imageMediaId = e.target.value}
                       placeholder="Enter existing media ID (UUID)..."
                       className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md"
-                      disabled={isUploading}
+                      disabled={state.isUploading}
                       data-test="entity-image-media-id"
                     />
                   </div>
@@ -429,8 +435,8 @@ export function DataPanel({ preselectedEntity, preselectedRelation, preselectedA
                     <label className="text-sm font-medium text-gray-700">Caption</label>
                     <input
                       type="text"
-                      value={imageCaption}
-                      onChange={(e) => setImageCaption(e.target.value)}
+                      value={state.imageCaption}
+                      onChange={(e) => dataPanelState.imageCaption = e.target.value}
                       placeholder="Enter image caption..."
                       className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md"
                       data-test="entity-image-caption"
@@ -440,8 +446,8 @@ export function DataPanel({ preselectedEntity, preselectedRelation, preselectedA
                     <label className="text-sm font-medium text-gray-700">Alt Text</label>
                     <input
                       type="text"
-                      value={imageAltText}
-                      onChange={(e) => setImageAltText(e.target.value)}
+                      value={state.imageAltText}
+                      onChange={(e) => dataPanelState.imageAltText = e.target.value}
                       placeholder="Enter alternative text..."
                       className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md"
                       data-test="entity-image-alt-text"
@@ -461,10 +467,10 @@ export function DataPanel({ preselectedEntity, preselectedRelation, preselectedA
                     <input
                       type="radio"
                       value="entity"
-                      checked={subjectType === 'entity'}
+                      checked={state.subjectType === 'entity'}
                       onChange={() => {
-                        setSubjectType('entity');
-                        setSelectedSubject('');
+                        dataPanelState.subjectType = 'entity';
+                        dataPanelState.selectedSubject = '';
                       }}
                       className="mr-2"
                       data-test="subject-type-entity"
@@ -475,10 +481,10 @@ export function DataPanel({ preselectedEntity, preselectedRelation, preselectedA
                     <input
                       type="radio"
                       value="relation"
-                      checked={subjectType === 'relation'}
+                      checked={state.subjectType === 'relation'}
                       onChange={() => {
-                        setSubjectType('relation');
-                        setSelectedSubject('');
+                        dataPanelState.subjectType = 'relation';
+                        dataPanelState.selectedSubject = '';
                       }}
                       className="mr-2"
                       data-test="subject-type-relation"
@@ -487,13 +493,13 @@ export function DataPanel({ preselectedEntity, preselectedRelation, preselectedA
                   </label>
                 </div>
                 <select
-                  value={selectedSubject}
-                  onChange={(e) => setSelectedSubject(e.target.value)}
+                  value={state.selectedSubject}
+                  onChange={(e) => dataPanelState.selectedSubject = e.target.value}
                   className="mt-2 w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
                   data-test="relation-subject-select"
                 >
-                  <option value="">Select {subjectType}...</option>
-                  {subjectType === 'entity' ? (
+                  <option value="">Select {state.subjectType}...</option>
+                  {state.subjectType === 'entity' ? (
                     entities.map((entity) => (
                       <option key={entity.id} value={entity.id}>
                         {entity.id.slice(0, 8)}
@@ -520,8 +526,8 @@ export function DataPanel({ preselectedEntity, preselectedRelation, preselectedA
                 <label className="text-sm font-medium text-gray-700">Predicate</label>
                 <input
                   type="text"
-                  value={predicate}
-                  onChange={(e) => setPredicate(e.target.value)}
+                  value={state.predicate}
+                  onChange={(e) => dataPanelState.predicate = e.target.value}
                   placeholder="e.g., implies, contradicts, supports"
                   className="mt-1 w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
                   data-test="relation-predicate-input"
@@ -535,10 +541,10 @@ export function DataPanel({ preselectedEntity, preselectedRelation, preselectedA
                     <input
                       type="radio"
                       value="entity"
-                      checked={objectType === 'entity'}
+                      checked={state.objectType === 'entity'}
                       onChange={() => {
-                        setObjectType('entity');
-                        setSelectedObject('');
+                        dataPanelState.objectType = 'entity';
+                        dataPanelState.selectedObject = '';
                       }}
                       className="mr-2"
                       data-test="object-type-entity"
@@ -549,10 +555,10 @@ export function DataPanel({ preselectedEntity, preselectedRelation, preselectedA
                     <input
                       type="radio"
                       value="relation"
-                      checked={objectType === 'relation'}
+                      checked={state.objectType === 'relation'}
                       onChange={() => {
-                        setObjectType('relation');
-                        setSelectedObject('');
+                        dataPanelState.objectType = 'relation';
+                        dataPanelState.selectedObject = '';
                       }}
                       className="mr-2"
                       data-test="object-type-relation"
@@ -561,13 +567,13 @@ export function DataPanel({ preselectedEntity, preselectedRelation, preselectedA
                   </label>
                 </div>
                 <select
-                  value={selectedObject}
-                  onChange={(e) => setSelectedObject(e.target.value)}
+                  value={state.selectedObject}
+                  onChange={(e) => dataPanelState.selectedObject = e.target.value}
                   className="mt-2 w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
                   data-test="relation-object-select"
                 >
-                  <option value="">Select {objectType}...</option>
-                  {objectType === 'entity' ? (
+                  <option value="">Select {state.objectType}...</option>
+                  {state.objectType === 'entity' ? (
                     entities.map((entity) => (
                       <option key={entity.id} value={entity.id}>
                         {entity.id.slice(0, 8)}
@@ -597,17 +603,17 @@ export function DataPanel({ preselectedEntity, preselectedRelation, preselectedA
           <Button
             type="button"
             variant="outline"
-            onClick={() => setModalOpen(false)}
+            onClick={() => dataPanelState.modalOpen = false}
           >
             Cancel
           </Button>
           <Button
             type="submit"
             onClick={handleCreate}
-            data-test={activeTab === 'entity' ? 'create-entity-button' : 'create-relation-button'}
-            disabled={isUploading}
+            data-test={state.activeTab === 'entity' ? 'create-entity-button' : 'create-relation-button'}
+            disabled={state.isUploading}
           >
-            {isUploading ? 'Uploading...' : `Create ${activeTab === 'entity' ? 'Entity' : 'Relation'}`}
+            {state.isUploading ? 'Uploading...' : `Create ${state.activeTab === 'entity' ? 'Entity' : 'Relation'}`}
           </Button>
         </DialogFooter>
       </DialogContent>
