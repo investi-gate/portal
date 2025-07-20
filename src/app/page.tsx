@@ -5,9 +5,9 @@ import { proxy, useSnapshot } from 'valtio';
 import { InvestigationFlow } from '@/components/InvestigationFlow';
 import { AISearchPanel } from '@/components/AISearchPanel';
 import { DataPanel } from '@/components/DataPanel';
-import { Plus } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { Entity, Relation, EntityTypeTextData } from '@/db/types';
-import { useEntityTypeData } from '@/hooks/useDatabase';
+import { useEntityTypeData, useEntities } from '@/hooks/useDatabase';
 
 // Create a proxy for the page state
 const pageState = proxy({
@@ -21,6 +21,7 @@ const pageState = proxy({
 export default function Home() {
   const state = useSnapshot(pageState);
   const { getTextData } = useEntityTypeData();
+  const { deleteEntity } = useEntities();
 
   useEffect(() => {
     const fetchTextData = async () => {
@@ -96,6 +97,25 @@ export default function Home() {
                   >
                     <Plus className="h-3 w-3" />
                     Connect to
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (confirm('Are you sure you want to delete this entity? This action cannot be undone.')) {
+                        try {
+                          await deleteEntity(state.selectedEntity.id);
+                          pageState.selectedEntity = null;
+                          pageState.selectedEntityTextData = null;
+                        } catch (error) {
+                          console.error('Failed to delete entity:', error);
+                          alert('Failed to delete entity. Please try again.');
+                        }
+                      }
+                    }}
+                    className="mt-2 w-full px-3 py-1.5 text-xs font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors flex items-center justify-center gap-1"
+                    data-test="delete-entity-button"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    Delete Entity
                   </button>
                 </div>
               )}

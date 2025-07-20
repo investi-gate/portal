@@ -3,6 +3,7 @@
 import React from 'react';
 import { proxy, useSnapshot } from 'valtio';
 import { useEntities, useRelations } from '@/hooks/useDatabase';
+import type { Entity } from '@/db/types';
 import {
   Dialog,
   DialogContent,
@@ -15,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { User, FileText, Image, Upload, Plus, Link } from 'lucide-react';
 
 interface DataPanelProps {
@@ -22,6 +24,10 @@ interface DataPanelProps {
   preselectedRelation?: string;
   preselectedAsSubject?: boolean;
   onOpen?: () => void;
+}
+
+interface EntityWithContent extends Entity {
+  text_content?: string;
 }
 
 // Create state proxy object
@@ -47,6 +53,53 @@ export function DataPanel({ preselectedEntity, preselectedRelation, preselectedA
   const { entities, createEntity, deleteEntity } = useEntities();
   const { relations, createRelation, deleteRelation } = useRelations();
   const state = useSnapshot(dataPanelState);
+
+  // Prepare entity options for combobox
+  const entityOptions: ComboboxOption[] = React.useMemo(() => {
+    return entities.map((entity: EntityWithContent) => {
+      const types = [];
+      if (entity.type_facial_data_id) types.push('👤 Facial');
+      if (entity.type_text_data_id) types.push('📝 Text');
+      if (entity.type_image_data_id) types.push('🖼️ Image');
+      
+      // Get text preview if available
+      let textPreview = '';
+      if (entity.text_content) {
+        const maxLength = 50;
+        textPreview = entity.text_content.length > maxLength 
+          ? entity.text_content.slice(0, maxLength) + '...'
+          : entity.text_content;
+      }
+      
+      const label = textPreview || `Entity ${entity.id.slice(0, 8)}`;
+      const sublabel = types.join(', ') || 'No data';
+      
+      return {
+        value: entity.id,
+        label,
+        sublabel,
+      };
+    }).sort((a, b) => {
+      // Sort by creation date (newer first) - assuming UUIDs are time-ordered
+      return b.value.localeCompare(a.value);
+    });
+  }, [entities]);
+
+  // Prepare relation options for combobox
+  const relationOptions: ComboboxOption[] = React.useMemo(() => {
+    return relations.map((relation) => {
+      const subjectId = relation.subject_entity_id || relation.subject_relation_id;
+      const objectId = relation.object_entity_id || relation.object_relation_id;
+      const subjectType = relation.subject_entity_id ? 'E' : 'R';
+      const objectType = relation.object_entity_id ? 'E' : 'R';
+      
+      return {
+        value: relation.id,
+        label: `${subjectType}:${subjectId?.slice(0, 6)} → ${relation.predicate} → ${objectType}:${objectId?.slice(0, 6)}`,
+        sublabel: `Relation ${relation.id.slice(0, 8)}`,
+      };
+    });
+  }, [relations]);
 
   const handleFileUpload = async () => {
     if (!dataPanelState.selectedFile) {
@@ -492,46 +545,47 @@ export function DataPanel({ preselectedEntity, preselectedRelation, preselectedA
                     <span className="text-sm">Relation</span>
                   </label>
                 </div>
-                <select
-                  value={state.selectedSubject}
-                  onChange={(e) => dataPanelState.selectedSubject = e.target.value}
-                  className="mt-2 w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
-                  data-test="relation-subject-select"
-                >
-                  <option value="">Select {state.subjectType}...</option>
-                  {state.subjectType === 'entity' ? (
-                    entities.map((entity) => (
-                      <option key={entity.id} value={entity.id}>
-                        {entity.id.slice(0, 8)}
-                        {entity.type_facial_data_id && ' 👤'}
-                        {entity.type_text_data_id && ' 📝'}
-                        {entity.type_image_data_id && ' 🖼️'}
-                      </option>
-                    ))
-                  ) : (
-                    relations.map((relation) => (
-                      <option key={relation.id} value={relation.id}>
-                        {relation.subject_entity_id?.slice(0, 6) || relation.subject_relation_id?.slice(0, 6)}
-                        {' → '}
-                        {relation.predicate}
-                        {' → '}
-                        {relation.object_entity_id?.slice(0, 6) || relation.object_relation_id?.slice(0, 6)}
-                      </option>
-                    ))
-                  )}
-                </select>
+                <div className="mt-2">
+                  <Combobox
+                    options={state.subjectType === 'entity' ? entityOptions : relationOptions}
+                    value={state.selectedSubject}
+                    onValueChange={(value) => dataPanelState.selectedSubject = value}
+                    placeholder={`Select ${state.subjectType}...`}
+                    searchPlaceholder={`Search ${state.subjectType}...`}
+                    emptyText={`No ${state.subjectType} found.`}
+                    data-test="relation-subject-combobox"
+                  />
+                </div>
               </div>
               
               <div>
                 <label className="text-sm font-medium text-gray-700">Predicate</label>
-                <input
-                  type="text"
-                  value={state.predicate}
-                  onChange={(e) => dataPanelState.predicate = e.target.value}
-                  placeholder="e.g., implies, contradicts, supports"
-                  className="mt-1 w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
-                  data-test="relation-predicate-input"
-                />
+                <div className="mt-1">
+                  <Combobox
+                    options={[
+                      { value: 'implies', label: 'implies' },
+                      { value: 'contradicts', label: 'contradicts' },
+                      { value: 'supports', label: 'supports' },
+                      { value: 'refutes', label: 'refutes' },
+                      { value: 'relates-to', label: 'relates to' },
+                      { value: 'causes', label: 'causes' },
+                      { value: 'caused-by', label: 'caused by' },
+                      { value: 'contains', label: 'contains' },
+                      { value: 'part-of', label: 'part of' },
+                      { value: 'precedes', label: 'precedes' },
+                      { value: 'follows', label: 'follows' },
+                      { value: 'equals', label: 'equals' },
+                      { value: 'depends-on', label: 'depends on' },
+                    ]}
+                    value={state.predicate}
+                    onValueChange={(value) => dataPanelState.predicate = value}
+                    placeholder="Select or type predicate..."
+                    searchPlaceholder="Search predicates..."
+                    emptyText="Type a custom predicate..."
+                    allowCustomValue={true}
+                    data-test="relation-predicate-combobox"
+                  />
+                </div>
               </div>
               
               <div>
@@ -566,34 +620,17 @@ export function DataPanel({ preselectedEntity, preselectedRelation, preselectedA
                     <span className="text-sm">Relation</span>
                   </label>
                 </div>
-                <select
-                  value={state.selectedObject}
-                  onChange={(e) => dataPanelState.selectedObject = e.target.value}
-                  className="mt-2 w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
-                  data-test="relation-object-select"
-                >
-                  <option value="">Select {state.objectType}...</option>
-                  {state.objectType === 'entity' ? (
-                    entities.map((entity) => (
-                      <option key={entity.id} value={entity.id}>
-                        {entity.id.slice(0, 8)}
-                        {entity.type_facial_data_id && ' 👤'}
-                        {entity.type_text_data_id && ' 📝'}
-                        {entity.type_image_data_id && ' 🖼️'}
-                      </option>
-                    ))
-                  ) : (
-                    relations.map((relation) => (
-                      <option key={relation.id} value={relation.id}>
-                        {relation.subject_entity_id?.slice(0, 6) || relation.subject_relation_id?.slice(0, 6)}
-                        {' → '}
-                        {relation.predicate}
-                        {' → '}
-                        {relation.object_entity_id?.slice(0, 6) || relation.object_relation_id?.slice(0, 6)}
-                      </option>
-                    ))
-                  )}
-                </select>
+                <div className="mt-2">
+                  <Combobox
+                    options={state.objectType === 'entity' ? entityOptions : relationOptions}
+                    value={state.selectedObject}
+                    onValueChange={(value) => dataPanelState.selectedObject = value}
+                    placeholder={`Select ${state.objectType}...`}
+                    searchPlaceholder={`Search ${state.objectType}...`}
+                    emptyText={`No ${state.objectType} found.`}
+                    data-test="relation-object-combobox"
+                  />
+                </div>
               </div>
             </div>
           </TabsContent>

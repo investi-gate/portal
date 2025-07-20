@@ -133,9 +133,49 @@ export async function dbDeleteEntity(
   db: DatabaseClient,
   id: string
 ): Promise<boolean> {
-  const query = `DELETE FROM entities WHERE id = $1`;
-  const result = await db.query(query, [id]);
-  return result.rowCount > 0;
+  // Use a transaction to ensure data consistency
+  const client = await db.connect();
+  
+  try {
+    await client.query('BEGIN');
+    
+    // First, we need to handle cascading deletion of relations
+    // This is complex because relations can reference other relations
+    // We'll use a recursive CTE to find all dependent relations
+    const deleteDependentRelationsQuery = `
+      WITH RECURSIVE dependent_relations AS (
+        -- Base case: relations that directly reference the entity
+        SELECT id 
+        FROM relations 
+        WHERE subject_entity_id = $1 OR object_entity_id = $1
+        
+        UNION
+        
+        -- Recursive case: relations that reference other relations we're deleting
+        SELECT r.id
+        FROM relations r
+        INNER JOIN dependent_relations dr ON 
+          r.subject_relation_id = dr.id OR r.object_relation_id = dr.id
+      )
+      DELETE FROM relations
+      WHERE id IN (SELECT id FROM dependent_relations)
+    `;
+    
+    await client.query(deleteDependentRelationsQuery, [id]);
+    
+    // Then delete the entity itself
+    const deleteEntityQuery = `DELETE FROM entities WHERE id = $1`;
+    const result = await client.query(deleteEntityQuery, [id]);
+    
+    await client.query('COMMIT');
+    
+    return result.rowCount > 0;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function dbGetEntitiesByFacialDataId(

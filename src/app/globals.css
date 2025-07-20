@@ -53,6 +53,30 @@ body {
   @apply bg-gray-50 border border-gray-200;
 }
 
+/* Radix UI Popover scrolling fix */
+[data-radix-popover-content] [role="listbox"] {
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db #f3f4f6;
+}
+
+[data-radix-popover-content] [role="listbox"]::-webkit-scrollbar {
+  width: 8px;
+}
+
+[data-radix-popover-content] [role="listbox"]::-webkit-scrollbar-track {
+  background: #f3f4f6;
+  border-radius: 4px;
+}
+
+[data-radix-popover-content] [role="listbox"]::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
+}
+
+[data-radix-popover-content] [role="listbox"]::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
 /* Custom edge label styling */
 .relation-edge-label {
   @apply absolute bg-white px-1.5 py-0.5 rounded text-xs font-medium;
