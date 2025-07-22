@@ -1,153 +1,297 @@
 import { useEffect, useCallback, useMemo } from 'react';
 import { proxy, useSnapshot } from 'valtio';
 import { Entity, Relation, EntityTypeFacialData, EntityTypeTextData, BucketedResponse, Bucket } from '@/db/types';
+import { bucketStore, bucketActions, bucketSelectors } from '@/stores/bucketStore';
 
-// State proxies for each hook
+// Generic state type for CRUD operations
+type CrudState<T> = {
+  data: T[];
+  loading: boolean;
+  error: Error | null;
+};
+
+// API Layer - Extracted database operations
+const api = {
+  // Generic fetch helper
+  async fetch<T>(url: string, options?: RequestInit): Promise<T> {
+    const response = await fetch(url, options);
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Request failed: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  // Entity operations
+  entities: {
+    async fetchAll(): Promise<BucketedResponse<string[]>> {
+      return api.fetch('/api/entities');
+    },
+    async create(input: { type_facial_data_id?: string; type_text_data_id?: string }) {
+      return api.fetch('/api/entities', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      });
+    },
+    async update(id: string, input: { type_facial_data_id?: string | null; type_text_data_id?: string | null }) {
+      return api.fetch(`/api/entities/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      });
+    },
+    async delete(id: string) {
+      return api.fetch(`/api/entities/${id}`, { method: 'DELETE' });
+    }
+  },
+
+  // Relation operations
+  relations: {
+    async fetchAll() {
+      return api.fetch<{ relations: Relation[] }>('/api/relations');
+    },
+    async fetchByEntity(entityId: string) {
+      return api.fetch<{ relations: Relation[] }>(`/api/relations?entity=${entityId}`);
+    },
+    async create(input: {
+      subject_entity_id?: string;
+      subject_relation_id?: string;
+      predicate: string;
+      object_entity_id?: string;
+      object_relation_id?: string;
+    }) {
+      return api.fetch<{ relation: Relation }>('/api/relations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      });
+    },
+    async update(id: string, input: Partial<Relation>) {
+      return api.fetch<{ relation: Relation }>(`/api/relations/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      });
+    },
+    async delete(id: string) {
+      return api.fetch(`/api/relations/${id}`, { method: 'DELETE' });
+    }
+  },
+
+  // Entity type data operations
+  entityTypes: {
+    async getTextData(id: string): Promise<EntityTypeTextData | null> {
+      try {
+        const data = await api.fetch<{ textData: EntityTypeTextData }>(`/api/entity-types/text/${id}`);
+        return data.textData;
+      } catch (err) {
+        const error = err as Error;
+        if (error.message.includes('404')) return null;
+        throw error;
+      }
+    },
+    async getFacialData(id: string): Promise<EntityTypeFacialData | null> {
+      try {
+        const data = await api.fetch<{ facialData: EntityTypeFacialData }>(`/api/entity-types/facial/${id}`);
+        return data.facialData;
+      } catch (err) {
+        const error = err as Error;
+        if (error.message.includes('404')) return null;
+        throw error;
+      }
+    }
+  },
+
+  // AI analysis operations
+  ai: {
+    async analyze(type: 'all' | 'importance' | 'patterns' | 'clusters' | 'suggestions' = 'all') {
+      return api.fetch<{ results: unknown }>('/api/ai/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type }),
+      });
+    },
+    async search(query: string) {
+      return api.fetch<{ results: unknown }>(`/api/ai/search?q=${encodeURIComponent(query)}`);
+    }
+  }
+};
+
+// State proxies
 const entitiesState = proxy<{
-  bucket: Bucket | null;
   entityIds: string[];
   loading: boolean;
   error: Error | null;
 }>({
-  bucket: null,
   entityIds: [],
   loading: true,
   error: null
 });
 
-const relationsState = proxy<{
-  relations: Relation[];
-  loading: boolean;
-  error: Error | null;
-}>({
-  relations: [],
+const relationsState = proxy<CrudState<Relation>>({
+  data: [],
   loading: true,
   error: null
 });
 
-const entityTypeDataState = proxy<{
-  loading: boolean;
-  error: Error | null;
+const loadingState = proxy<{
+  [key: string]: boolean;
 }>({
-  loading: false,
-  error: null
+  entityTypeData: false,
+  aiAnalysis: false
 });
 
-const aiAnalysisState = proxy<{
-  loading: boolean;
-  error: Error | null;
+const errorState = proxy<{
+  [key: string]: Error | null;
 }>({
-  loading: false,
-  error: null
+  entityTypeData: null,
+  aiAnalysis: null
 });
+
+// Helper hook for common loading and error handling
+function useAsyncOperation<TArgs extends unknown[], TReturn>(
+  operation: (...args: TArgs) => Promise<TReturn>,
+  options?: {
+    onSuccess?: (result: TReturn) => void;
+    onError?: (error: Error) => void;
+  }
+) {
+  const execute = useCallback(async (...args: TArgs) => {
+    try {
+      const result = await operation(...args);
+      options?.onSuccess?.(result);
+      return result;
+    } catch (err) {
+      const error = err as Error;
+      options?.onError?.(error);
+      throw error;
+    }
+  }, [operation, options]);
+
+  return execute;
+}
+
+// Custom hook for entity operations
+function useEntityOperations() {
+  const fetchEntities = useAsyncOperation<[], void>(
+    async () => {
+      entitiesState.loading = true;
+      bucketActions.setLoading(true);
+      try {
+        const data = await api.entities.fetchAll();
+        bucketActions.setBucket(data.bucket);
+        entitiesState.entityIds = data.data;
+        entitiesState.error = null;
+      } finally {
+        entitiesState.loading = false;
+        bucketActions.setLoading(false);
+      }
+    },
+    {
+      onError: (err) => {
+        entitiesState.error = err;
+        bucketActions.setError(err);
+      }
+    }
+  );
+
+  const createEntity = useAsyncOperation<[{ type_facial_data_id?: string; type_text_data_id?: string }], Entity>(
+    async (input) => {
+      const data = await api.entities.create(input);
+      if (data.entity) {
+        bucketActions.addEntity(data.entity);
+        entitiesState.entityIds = [...entitiesState.entityIds, data.entity.id];
+      }
+      await fetchEntities();
+      return data.entity;
+    },
+    {
+      onError: (err) => {
+        entitiesState.error = err;
+      }
+    }
+  );
+
+  const updateEntity = useAsyncOperation<[string, { type_facial_data_id?: string | null; type_text_data_id?: string | null }], Entity>(
+    async (id, input) => {
+      const data = await api.entities.update(id, input);
+      if (data.entity) {
+        bucketActions.updateEntity(id, data.entity);
+      }
+      await fetchEntities();
+      return data.entity;
+    },
+    {
+      onError: (err) => {
+        entitiesState.error = err;
+      }
+    }
+  );
+
+  const deleteEntity = useAsyncOperation<[string], boolean>(
+    async (id) => {
+      await api.entities.delete(id);
+      bucketActions.removeEntity(id);
+      entitiesState.entityIds = entitiesState.entityIds.filter(entityId => entityId !== id);
+      await fetchEntities();
+      return true;
+    },
+    {
+      onError: (err) => {
+        entitiesState.error = err;
+      }
+    }
+  );
+
+  return {
+    fetchEntities,
+    createEntity,
+    updateEntity,
+    deleteEntity
+  };
+}
+
+// Custom hook for entity data transformation
+function useEntityDataTransform(entityIds: string[], bucket: Bucket | null) {
+  return useMemo(() => {
+    if (!bucket) return [];
+    
+    return entityIds
+      .map(id => {
+        const entity = bucketSelectors.getEntity(id);
+        if (!entity) return null;
+        
+        const textContent = bucketSelectors.getEntityTextContent(entity);
+        
+        return {
+          ...entity,
+          text_content: textContent
+        };
+      })
+      .filter(Boolean) as (Entity & { text_content?: string })[];
+  }, [bucket, entityIds]);
+}
 
 export function useEntities() {
   const snapshot = useSnapshot(entitiesState);
-
-  const fetchEntities = useCallback(async () => {
-    try {
-      entitiesState.loading = true;
-      const response = await fetch('/api/entities');
-      if (!response.ok) throw new Error('Failed to fetch entities');
-      const data: BucketedResponse<string[]> = await response.json();
-      entitiesState.bucket = data.bucket;
-      entitiesState.entityIds = data.data;
-      entitiesState.error = null;
-    } catch (err) {
-      entitiesState.error = err as Error;
-    } finally {
-      entitiesState.loading = false;
-    }
-  }, []);
-
-  const createEntity = useCallback(async (input: {
-    type_facial_data_id?: string;
-    type_text_data_id?: string;
-  }) => {
-    try {
-      const response = await fetch('/api/entities', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
-      });
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create entity');
-      }
-      const data = await response.json();
-      // Refetch to get updated bucket
-      await fetchEntities();
-      return data.entity;
-    } catch (err) {
-      entitiesState.error = err as Error;
-      throw err;
-    }
-  }, [fetchEntities]);
-
-  const updateEntity = useCallback(async (id: string, input: {
-    type_facial_data_id?: string | null;
-    type_text_data_id?: string | null;
-  }) => {
-    try {
-      const response = await fetch(`/api/entities/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
-      });
-      if (!response.ok) throw new Error('Failed to update entity');
-      const data = await response.json();
-      // Refetch to get updated bucket
-      await fetchEntities();
-      return data.entity;
-    } catch (err) {
-      entitiesState.error = err as Error;
-      throw err;
-    }
-  }, [fetchEntities]);
-
-  const deleteEntity = useCallback(async (id: string) => {
-    try {
-      const response = await fetch(`/api/entities/${id}`, {
-        method: 'DELETE',
-      });
-      if (!response.ok) throw new Error('Failed to delete entity');
-      // Refetch to get updated bucket
-      await fetchEntities();
-      return true;
-    } catch (err) {
-      entitiesState.error = err as Error;
-      throw err;
-    }
-  }, [fetchEntities]);
+  const bucketSnapshot = useSnapshot(bucketStore);
+  const { fetchEntities, createEntity, updateEntity, deleteEntity } = useEntityOperations();
+  
+  const entitiesWithTextContent = useEntityDataTransform(
+    snapshot.entityIds, 
+    bucketSnapshot.bucket
+  );
 
   useEffect(() => {
     fetchEntities();
-  }, [fetchEntities]);
-
-  // Helper to get entities with their text content
-  const entitiesWithTextContent = useMemo(() => {
-    if (!snapshot.bucket) return [];
-    
-    return snapshot.entityIds.map(id => {
-      const entity = snapshot.bucket.entities[id];
-      if (!entity) return null;
-      
-      const textContent = entity.type_text_data_id 
-        ? snapshot.bucket.entity_type_text_data[entity.type_text_data_id]?.content 
-        : undefined;
-      
-      return {
-        ...entity,
-        text_content: textContent
-      };
-    }).filter(Boolean) as (Entity & { text_content?: string })[];
-  }, [snapshot.bucket, snapshot.entityIds]);
+  }, []); // Remove fetchEntities dependency to run only once on mount
 
   return {
-    bucket: snapshot.bucket,
+    bucket: bucketSnapshot.bucket,
     entities: entitiesWithTextContent,
-    loading: snapshot.loading,
-    error: snapshot.error,
+    loading: snapshot.loading || bucketSnapshot.loading,
+    error: snapshot.error || bucketSnapshot.error,
     refetch: fetchEntities,
     createEntity,
     updateEntity,
@@ -156,107 +300,77 @@ export function useEntities() {
 }
 
 
-export function useRelations() {
-  const snapshot = useSnapshot(relationsState);
+// Custom hook for relation operations
+function useRelationOperations() {
+  const setLoading = (loading: boolean) => {
+    relationsState.loading = loading;
+  };
 
-  const fetchRelations = useCallback(async () => {
-    try {
-      relationsState.loading = true;
-      const response = await fetch('/api/relations');
-      if (!response.ok) throw new Error('Failed to fetch relations');
-      const data = await response.json();
-      relationsState.relations = data.relations;
-      relationsState.error = null;
-    } catch (err) {
-      relationsState.error = err as Error;
-    } finally {
-      relationsState.loading = false;
-    }
-  }, []);
+  const setError = (error: Error | null) => {
+    relationsState.error = error;
+  };
 
-  const createRelation = useCallback(async (input: {
+  const fetchRelations = useAsyncOperation<[], void>(
+    async () => {
+      setLoading(true);
+      try {
+        const data = await api.relations.fetchAll();
+        relationsState.data = data.relations;
+        setError(null);
+      } finally {
+        setLoading(false);
+      }
+    },
+    { onError: setError }
+  );
+
+  const createRelation = useAsyncOperation<[{
     subject_entity_id?: string;
     subject_relation_id?: string;
     predicate: string;
     object_entity_id?: string;
     object_relation_id?: string;
-  }) => {
-    try {
-      const response = await fetch('/api/relations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
-      });
-      if (!response.ok) throw new Error('Failed to create relation');
-      const data = await response.json();
-      relationsState.relations = [...relationsState.relations, data.relation];
+  }], Relation>(
+    async (input) => {
+      const data = await api.relations.create(input);
+      relationsState.data = [...relationsState.data, data.relation];
       return data.relation;
-    } catch (err) {
-      relationsState.error = err as Error;
-      throw err;
-    }
-  }, []);
+    },
+    { onError: setError }
+  );
 
-  const updateRelation = useCallback(async (id: string, input: {
-    subject_entity_id?: string | null;
-    subject_relation_id?: string | null;
-    predicate?: string;
-    object_entity_id?: string | null;
-    object_relation_id?: string | null;
-  }) => {
-    try {
-      const response = await fetch(`/api/relations/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
-      });
-      if (!response.ok) throw new Error('Failed to update relation');
-      const data = await response.json();
+  const updateRelation = useAsyncOperation<[string, Partial<Relation>], Relation>(
+    async (id, input) => {
+      const data = await api.relations.update(id, input);
       if (data.relation) {
-        relationsState.relations = relationsState.relations.map(r => r.id === id ? data.relation : r);
+        relationsState.data = relationsState.data.map(r => 
+          r.id === id ? data.relation : r
+        );
       }
       return data.relation;
-    } catch (err) {
-      relationsState.error = err as Error;
-      throw err;
-    }
-  }, []);
+    },
+    { onError: setError }
+  );
 
-  const deleteRelation = useCallback(async (id: string) => {
-    try {
-      const response = await fetch(`/api/relations/${id}`, {
-        method: 'DELETE',
-      });
-      if (!response.ok) throw new Error('Failed to delete relation');
-      relationsState.relations = relationsState.relations.filter(r => r.id !== id);
+  const deleteRelation = useAsyncOperation<[string], boolean>(
+    async (id) => {
+      await api.relations.delete(id);
+      relationsState.data = relationsState.data.filter(r => r.id !== id);
       return true;
-    } catch (err) {
-      relationsState.error = err as Error;
-      throw err;
-    }
-  }, []);
+    },
+    { onError: setError }
+  );
 
-  const getRelationsByEntity = useCallback(async (entityId: string) => {
-    try {
-      const response = await fetch(`/api/relations?entity=${entityId}`);
-      if (!response.ok) throw new Error('Failed to fetch relations by entity');
-      const data = await response.json();
+  const getRelationsByEntity = useAsyncOperation<[string], Relation[]>(
+    async (entityId) => {
+      const data = await api.relations.fetchByEntity(entityId);
       return data.relations;
-    } catch (err) {
-      relationsState.error = err as Error;
-      throw err;
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchRelations();
-  }, [fetchRelations]);
+    },
+    { onError: setError }
+  );
 
   return {
-    relations: snapshot.relations,
-    loading: snapshot.loading,
-    error: snapshot.error,
-    refetch: fetchRelations,
+    fetchRelations,
     createRelation,
     updateRelation,
     deleteRelation,
@@ -264,94 +378,125 @@ export function useRelations() {
   };
 }
 
-export function useEntityTypeData() {
-  const snapshot = useSnapshot(entityTypeDataState);
+export function useRelations() {
+  const snapshot = useSnapshot(relationsState);
+  const operations = useRelationOperations();
 
-  const getTextData = useCallback(async (id: string): Promise<EntityTypeTextData | null> => {
-    try {
-      entityTypeDataState.loading = true;
-      const response = await fetch(`/api/entity-types/text/${id}`);
-      if (!response.ok) {
-        if (response.status === 404) return null;
-        throw new Error('Failed to fetch text data');
-      }
-      const data = await response.json();
-      return data.textData;
-    } catch (err) {
-      entityTypeDataState.error = err as Error;
-      throw err;
-    } finally {
-      entityTypeDataState.loading = false;
-    }
-  }, []);
-
-  const getFacialData = useCallback(async (id: string): Promise<EntityTypeFacialData | null> => {
-    try {
-      entityTypeDataState.loading = true;
-      const response = await fetch(`/api/entity-types/facial/${id}`);
-      if (!response.ok) {
-        if (response.status === 404) return null;
-        throw new Error('Failed to fetch facial data');
-      }
-      const data = await response.json();
-      return data.facialData;
-    } catch (err) {
-      entityTypeDataState.error = err as Error;
-      throw err;
-    } finally {
-      entityTypeDataState.loading = false;
-    }
-  }, []);
+  useEffect(() => {
+    operations.fetchRelations();
+  }, []); // Remove dependency to run only once on mount
 
   return {
-    getTextData,
-    getFacialData,
+    relations: snapshot.data,
     loading: snapshot.loading,
-    error: snapshot.error
+    error: snapshot.error,
+    refetch: operations.fetchRelations,
+    ...operations
   };
 }
 
-export function useAIAnalysis() {
-  const snapshot = useSnapshot(aiAnalysisState);
+// Custom hook for entity type data operations
+function useEntityTypeOperations() {
+  const setLoading = (loading: boolean) => {
+    loadingState.entityTypeData = loading;
+  };
 
-  const analyze = useCallback(async (type: 'all' | 'importance' | 'patterns' | 'clusters' | 'suggestions' = 'all') => {
-    try {
-      aiAnalysisState.loading = true;
-      const response = await fetch('/api/ai/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type }),
-      });
-      if (!response.ok) throw new Error('Failed to analyze data');
-      const data = await response.json();
-      return data.results;
-    } catch (err) {
-      aiAnalysisState.error = err as Error;
-      throw err;
-    } finally {
-      aiAnalysisState.loading = false;
-    }
-  }, []);
+  const setError = (error: Error | null) => {
+    errorState.entityTypeData = error;
+  };
 
-  const search = useCallback(async (query: string) => {
-    try {
-      aiAnalysisState.loading = true;
-      const response = await fetch(`/api/ai/search?q=${encodeURIComponent(query)}`);
-      if (!response.ok) throw new Error('Failed to search');
-      const data = await response.json();
-      return data.results;
-    } catch (err) {
-      aiAnalysisState.error = err as Error;
-      throw err;
-    } finally {
-      aiAnalysisState.loading = false;
-    }
-  }, []);
+  const getTextData = useAsyncOperation<[string], EntityTypeTextData | null>(
+    async (id: string) => {
+      setLoading(true);
+      try {
+        const result = await api.entityTypes.getTextData(id);
+        setError(null);
+        return result;
+      } finally {
+        setLoading(false);
+      }
+    },
+    { onError: setError }
+  );
+
+  const getFacialData = useAsyncOperation<[string], EntityTypeFacialData | null>(
+    async (id: string) => {
+      setLoading(true);
+      try {
+        const result = await api.entityTypes.getFacialData(id);
+        setError(null);
+        return result;
+      } finally {
+        setLoading(false);
+      }
+    },
+    { onError: setError }
+  );
+
+  return { getTextData, getFacialData };
+}
+
+export function useEntityTypeData() {
+  const loadingSnapshot = useSnapshot(loadingState);
+  const errorSnapshot = useSnapshot(errorState);
+  const operations = useEntityTypeOperations();
 
   return {
-    analyze,
-    search,
-    loading: snapshot.loading,
-    error: snapshot.error
+    ...operations,
+    loading: loadingSnapshot.entityTypeData,
+    error: errorSnapshot.entityTypeData
+  };
+}
+
+// Custom hook for AI analysis operations
+function useAIOperations() {
+  const setLoading = (loading: boolean) => {
+    loadingState.aiAnalysis = loading;
+  };
+
+  const setError = (error: Error | null) => {
+    errorState.aiAnalysis = error;
+  };
+
+  const analyze = useAsyncOperation<[type?: 'all' | 'importance' | 'patterns' | 'clusters' | 'suggestions'], unknown>(
+    async (type = 'all') => {
+      setLoading(true);
+      try {
+        const data = await api.ai.analyze(type);
+        setError(null);
+        return data.results;
+      } finally {
+        setLoading(false);
+      }
+    },
+    { onError: setError }
+  );
+
+  const search = useAsyncOperation<[string], unknown>(
+    async (query: string) => {
+      setLoading(true);
+      try {
+        const data = await api.ai.search(query);
+        setError(null);
+        return data.results;
+      } finally {
+        setLoading(false);
+      }
+    },
+    { onError: setError }
+  );
+
+  return { analyze, search };
+}
+
+export function useAIAnalysis() {
+  const loadingSnapshot = useSnapshot(loadingState);
+  const errorSnapshot = useSnapshot(errorState);
+  const operations = useAIOperations();
+
+  return {
+    ...operations,
+    loading: loadingSnapshot.aiAnalysis,
+    error: errorSnapshot.aiAnalysis
   };
 }

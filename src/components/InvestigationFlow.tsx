@@ -1,7 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo } from 'react';
-import { proxy, useSnapshot } from 'valtio';
+import React, { useCallback, useEffect } from 'react';
 import {
   ReactFlow,
   MiniMap,
@@ -13,19 +12,17 @@ import {
   Connection,
   Edge,
   BackgroundVariant,
-  Position,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
 import { EntityNode } from './EntityNode';
 import { RelationNode } from './RelationNode';
 import { RelationEdge } from './RelationEdge';
-import { useEntities, useRelations, useAIAnalysis } from '@/hooks/useDatabase';
+import { useEntities, useRelations } from '@/hooks/useDatabase';
+import { useBucket } from '@/hooks/useBucket';
 import { Entity, Relation } from '@/db/types';
-import { EntityScore } from '@/lib/ai-analysis';
 import { InvestigationNode, RelationEdge as RelationEdgeType } from '@/types/react-flow';
-import { calculateGraphLayout } from '@/utils/layout';
-import { getOptimalConnectionPoints, getRelationNodeConnectionPoints } from '@/utils/edge-utils';
+import { getEntityImageUrl, getEntityImagePortion } from '@/utils/bucket-helpers';
 
 const nodeTypes = {
   entity: EntityNode,
@@ -41,60 +38,62 @@ interface InvestigationFlowProps {
   onRelationSelect?: (relation: Relation) => void;
 }
 
-// Create a proxy for the investigation flow state
-const investigationFlowState = proxy({
-  entityScores: [] as EntityScore[],
-});
 
 export function InvestigationFlow({ onEntitySelect, onRelationSelect }: InvestigationFlowProps) {
-  const { entities, loading: entitiesLoading, bucket } = useEntities();
+  const { entities, loading: entitiesLoading } = useEntities();
   const { relations, loading: relationsLoading } = useRelations();
-  const { analyze } = useAIAnalysis();
-  const state = useSnapshot(investigationFlowState);
+  const { bucket } = useBucket();
   
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
 
-  // Memoize the calculated nodes to prevent unnecessary recalculations
-  const calculatedNodes = useMemo(() => {
-    if (entities.length > 0 || relations.length > 0) {
-      return calculateGraphLayout(entities, relations, investigationFlowState.entityScores, bucket);
-    }
-    return [];
-  }, [entities, relations, state.entityScores, bucket]);
 
-  // Convert entities and relations to nodes and edges
+
+  // Convert entities and relations to nodes
   useEffect(() => {
-    const loadAnalysis = async () => {
-      if (entities.length > 0 && relations.length > 0) {
-        try {
-          const results = await analyze('importance');
-          if (results.entityScores) {
-            investigationFlowState.entityScores = results.entityScores;
-          }
-        } catch (error) {
-          console.error('Failed to analyze entities:', error);
-        }
-      }
-    };
+    const newNodes: InvestigationNode[] = [];
+    
+    // Add entity nodes
+    entities.forEach((entity, index) => {
+      // Get image URL and portion data using helpers
+      const imageUrl = getEntityImageUrl(entity, bucket);
+      const imagePortion = getEntityImagePortion(entity, bucket);
+      
+      newNodes.push({
+        id: entity.id,
+        type: 'entity',
+        position: { x: 100 + (index % 5) * 200, y: 100 + Math.floor(index / 5) * 200 },
+        data: {
+          entity: {
+            ...entity,
+            image_portion: imagePortion,
+          },
+          label: imagePortion?.label || `Entity ${entity.id.slice(0, 8)}`,
+          imageUrl,
+        },
+      });
+    });
+    
+    // Add relation nodes
+    relations.forEach((relation, index) => {
+      newNodes.push({
+        id: relation.id,
+        type: 'relation',
+        position: { x: 100 + (index % 4) * 250, y: 400 + Math.floor(index / 4) * 200 },
+        data: {
+          relation: relation,
+          label: relation.predicate || '',
+        },
+      });
+    });
+    
+    setNodes(newNodes);
+  }, [entities, relations, bucket, setNodes]);
 
-    loadAnalysis();
-  }, [entities, relations, analyze]);
-
+  // Create edges for relations
   useEffect(() => {
-    setNodes(calculatedNodes);
-  }, [calculatedNodes]);
-
-  // Memoize edge calculations - now depends on node positions
-  const calculatedEdges = useMemo(() => {
     const newEdges: RelationEdgeType[] = [];
-    
-    // Only calculate edges after nodes have been positioned
-    if (nodes.length === 0) return newEdges;
-    
-    // Create a map for quick node lookup
-    const nodeMap = new Map(nodes.map(node => [node.id, node]));
     
     // Create edges from source to relation node and from relation node to target
     relations.forEach(relation => {
@@ -103,26 +102,11 @@ export function InvestigationFlow({ onEntitySelect, onRelationSelect }: Investig
       
       if (!sourceId || !targetId) return;
       
-      const sourceNode = nodeMap.get(sourceId);
-      const relationNode = nodeMap.get(relation.id);
-      const targetNode = nodeMap.get(targetId);
-      
-      if (!sourceNode || !relationNode || !targetNode) return;
-      
-      // Calculate optimal connection points
-      const connectionPoints = getRelationNodeConnectionPoints(
-        sourceNode,
-        relationNode,
-        targetNode
-      );
-      
       // Edge from source to relation node
       newEdges.push({
         id: `${relation.id}-source`,
         source: sourceId,
         target: relation.id,
-        sourcePosition: connectionPoints.sourceToRelation.sourcePosition,
-        targetPosition: connectionPoints.sourceToRelation.targetPosition,
         type: 'relation',
         animated: false,
         style: {
@@ -136,8 +120,6 @@ export function InvestigationFlow({ onEntitySelect, onRelationSelect }: Investig
         id: `${relation.id}-target`,
         source: relation.id,
         target: targetId,
-        sourcePosition: connectionPoints.relationToTarget.sourcePosition,
-        targetPosition: connectionPoints.relationToTarget.targetPosition,
         type: 'relation',
         animated: false,
         style: {
@@ -147,12 +129,8 @@ export function InvestigationFlow({ onEntitySelect, onRelationSelect }: Investig
       });
     });
     
-    return newEdges;
-  }, [relations, nodes]);
-
-  useEffect(() => {
-    setEdges(calculatedEdges);
-  }, [calculatedEdges, setEdges]);
+    setEdges(newEdges);
+  }, [relations, setEdges]);
 
   const onConnect = useCallback(
     (params: Connection | Edge) => setEdges((eds) => addEdge(params, eds)),

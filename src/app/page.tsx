@@ -1,70 +1,58 @@
 'use client';
 
-import { useEffect } from 'react';
 import { proxy, useSnapshot } from 'valtio';
 import { InvestigationFlow } from '@/components/InvestigationFlow';
 import { AISearchPanel } from '@/components/AISearchPanel';
 import { DataPanel } from '@/components/DataPanel';
 import { Plus, Trash2 } from 'lucide-react';
 import { Entity, Relation, EntityTypeTextData } from '@/db/types';
-import { useEntityTypeData, useEntities } from '@/hooks/useDatabase';
+import { useEntities } from '@/hooks/useDatabase';
 
 // Create a proxy for the page state
-const pageState = proxy({
-  selectedEntity: null as Entity | null,
-  selectedRelation: null as Relation | null,
-  selectedEntityTextData: null as EntityTypeTextData | null,
+const pageState = proxy<{
+  selectedEntity: Entity | null,
+  selectedRelation: Relation | null,
+  selectedEntityTextData: EntityTypeTextData | null,
+  connectModalOpen: boolean,
+  preselectedItem: { entity?: string; relation?: string; asSubject?: boolean },
+}>({
+  selectedEntity: null,
+  selectedRelation: null,
+  selectedEntityTextData: null,
   connectModalOpen: false,
-  preselectedItem: {} as { entity?: string; relation?: string; asSubject?: boolean },
+  preselectedItem: {},
 });
 
 export default function Home() {
   const state = useSnapshot(pageState);
-  const { getTextData } = useEntityTypeData();
   const { deleteEntity } = useEntities();
 
-  useEffect(() => {
-    const fetchTextData = async () => {
-      if (pageState.selectedEntity?.type_text_data_id) {
-        try {
-          const textData = await getTextData(pageState.selectedEntity.type_text_data_id);
-          pageState.selectedEntityTextData = textData;
-        } catch (error) {
-          console.error('Failed to fetch text data:', error);
-          pageState.selectedEntityTextData = null;
-        }
-      } else {
-        pageState.selectedEntityTextData = null;
-      }
-    };
-
-    fetchTextData();
-  }, [state.selectedEntity, getTextData]);
+  function selectEntity(entity: Entity) { pageState.selectedEntity=entity }
+  function closeConnectModal() { pageState.connectModalOpen = false }
 
   return (
     <main className="w-screen h-screen relative overflow-hidden" data-test="main-container">
       {/* Main Investigation Flow - Full Screen */}
-      <InvestigationFlow 
+      <InvestigationFlow
         onEntitySelect={(entity) => pageState.selectedEntity = entity}
         onRelationSelect={(relation) => pageState.selectedRelation = relation}
       />
-
 
       {/* AI Tools - Minimal Floating UI */}
       <div className="absolute top-4 right-4 z-10" data-test="ai-tools">
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
             <div className="w-64">
-              <AISearchPanel onEntitySelect={(entity) => pageState.selectedEntity = entity} />
+              <AISearchPanel onEntitySelect={selectEntity} />
             </div>
-            <DataPanel 
+            <DataPanel
               preselectedEntity={state.connectModalOpen ? state.preselectedItem.entity : undefined}
               preselectedRelation={state.connectModalOpen ? state.preselectedItem.relation : undefined}
               preselectedAsSubject={state.preselectedItem.asSubject}
-              onOpen={() => pageState.connectModalOpen = false}
+              onOpen={closeConnectModal}
             />
           </div>
-          
+
           {/* Selected Item Info */}
           {(state.selectedEntity || state.selectedRelation) && (
             <div className="bg-white/90 backdrop-blur-sm rounded-lg p-4 max-w-sm" data-test="selected-item-info">
@@ -73,7 +61,7 @@ export default function Home() {
                   <h4 className="font-semibold text-sm mb-2">Selected Entity</h4>
                   <p className="text-xs text-gray-600">ID: {state.selectedEntity.id}</p>
                   <p className="text-xs text-gray-600">
-                    Types: {state.selectedEntity.type_facial_data_id && '👤 Facial'} 
+                    Types: {state.selectedEntity.type_facial_data_id && '👤 Facial'}
                     {state.selectedEntity.type_text_data_id && '📝 Text'}
                   </p>
                   {state.selectedEntityTextData?.content && (

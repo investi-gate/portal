@@ -14,7 +14,6 @@ export interface EntityNodeData {
     };
   };
   label: string;
-  importance?: number;
   imageUrl?: string;
 }
 

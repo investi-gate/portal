@@ -1,5 +1,9 @@
 import { DatabaseClient } from './client';
 import { Relation, CreateRelationInput, UpdateRelationInput } from './types';
+import { buildInsertPlaceholders, buildUpdateSetClause } from '@/utils/sql-helpers';
+
+const relationColumns = ['id', 'created_at', 'subject_entity_id', 'subject_relation_id', 'predicate', 'object_entity_id', 'object_relation_id'];
+const relationColumnsStr = relationColumns.join(', ');
 
 export async function dbCreateRelation(
   db: DatabaseClient,
@@ -14,24 +18,21 @@ export async function dbCreateRelation(
     throw new Error('Relation must have exactly one subject type and one object type');
   }
 
+  const { placeholders, values, cols } = buildInsertPlaceholders({
+    subject_entity_id: input.subject_entity_id || null,
+    subject_relation_id: input.subject_relation_id || null,
+    predicate: input.predicate,
+    object_entity_id: input.object_entity_id || null,
+    object_relation_id: input.object_relation_id || null,
+  });
+
   const query = `
-    INSERT INTO relations (
-      subject_entity_id, subject_relation_id, 
-      predicate, 
-      object_entity_id, object_relation_id
-    )
-    VALUES ($1, $2, $3, $4, $5)
-    RETURNING id, created_at, subject_entity_id, subject_relation_id, 
-              predicate, object_entity_id, object_relation_id
+    INSERT INTO relations (${cols})
+    VALUES (${placeholders})
+    RETURNING ${relationColumnsStr}
   `;
 
-  const result = await db.query(query, [
-    input.subject_entity_id || null,
-    input.subject_relation_id || null,
-    input.predicate,
-    input.object_entity_id || null,
-    input.object_relation_id || null,
-  ]);
+  const result = await db.query(query, [...values]);
 
   return result.rows[0];
 }
@@ -41,8 +42,7 @@ export async function dbGetRelation(
   id: string
 ): Promise<Relation | null> {
   const query = `
-    SELECT id, created_at, subject_entity_id, subject_relation_id, 
-           predicate, object_entity_id, object_relation_id
+    SELECT ${relationColumnsStr}
     FROM relations
     WHERE id = $1
   `;
@@ -57,8 +57,7 @@ export async function dbGetAllRelations(
   offset = 0
 ): Promise<Relation[]> {
   const query = `
-    SELECT id, created_at, subject_entity_id, subject_relation_id, 
-           predicate, object_entity_id, object_relation_id
+    SELECT ${relationColumnsStr}
     FROM relations
     ORDER BY created_at DESC
     LIMIT $1 OFFSET $2
@@ -73,8 +72,7 @@ export async function dbGetRelationsByEntityId(
   entityId: string
 ): Promise<Relation[]> {
   const query = `
-    SELECT id, created_at, subject_entity_id, subject_relation_id, 
-           predicate, object_entity_id, object_relation_id
+    SELECT ${relationColumnsStr}
     FROM relations
     WHERE subject_entity_id = $1 OR object_entity_id = $1
     ORDER BY created_at DESC
@@ -89,8 +87,7 @@ export async function dbGetRelationsBySubjectEntityId(
   entityId: string
 ): Promise<Relation[]> {
   const query = `
-    SELECT id, created_at, subject_entity_id, subject_relation_id, 
-           predicate, object_entity_id, object_relation_id
+    SELECT ${relationColumnsStr}
     FROM relations
     WHERE subject_entity_id = $1
     ORDER BY created_at DESC
@@ -105,8 +102,7 @@ export async function dbGetRelationsByObjectEntityId(
   entityId: string
 ): Promise<Relation[]> {
   const query = `
-    SELECT id, created_at, subject_entity_id, subject_relation_id, 
-           predicate, object_entity_id, object_relation_id
+    SELECT ${relationColumnsStr}
     FROM relations
     WHERE object_entity_id = $1
     ORDER BY created_at DESC
@@ -121,8 +117,7 @@ export async function dbGetRelationsByPredicate(
   predicate: string
 ): Promise<Relation[]> {
   const query = `
-    SELECT id, created_at, subject_entity_id, subject_relation_id, 
-           predicate, object_entity_id, object_relation_id
+    SELECT ${relationColumnsStr}
     FROM relations
     WHERE predicate = $1
     ORDER BY created_at DESC
@@ -137,8 +132,7 @@ export async function dbGetRelationsByRelationId(
   relationId: string
 ): Promise<Relation[]> {
   const query = `
-    SELECT id, created_at, subject_entity_id, subject_relation_id, 
-           predicate, object_entity_id, object_relation_id
+    SELECT ${relationColumnsStr}
     FROM relations
     WHERE subject_relation_id = $1 OR object_relation_id = $1
     ORDER BY created_at DESC
@@ -153,55 +147,26 @@ export async function dbUpdateRelation(
   id: string,
   input: UpdateRelationInput
 ): Promise<Relation | null> {
-  const setClause: string[] = [];
-  const values: any[] = [];
-  let paramCount = 1;
-
-  if (input.subject_entity_id !== undefined) {
-    setClause.push(`subject_entity_id = $${paramCount}`);
-    values.push(input.subject_entity_id);
-    paramCount++;
-  }
-
-  if (input.subject_relation_id !== undefined) {
-    setClause.push(`subject_relation_id = $${paramCount}`);
-    values.push(input.subject_relation_id);
-    paramCount++;
-  }
-
-  if (input.predicate !== undefined) {
-    setClause.push(`predicate = $${paramCount}`);
-    values.push(input.predicate);
-    paramCount++;
-  }
-
-  if (input.object_entity_id !== undefined) {
-    setClause.push(`object_entity_id = $${paramCount}`);
-    values.push(input.object_entity_id);
-    paramCount++;
-  }
-
-  if (input.object_relation_id !== undefined) {
-    setClause.push(`object_relation_id = $${paramCount}`);
-    values.push(input.object_relation_id);
-    paramCount++;
-  }
+  const { setClause, values, nextParamIndex } = buildUpdateSetClause({
+    subject_entity_id: input.subject_entity_id,
+    subject_relation_id: input.subject_relation_id,
+    predicate: input.predicate,
+    object_entity_id: input.object_entity_id,
+    object_relation_id: input.object_relation_id,
+  });
 
   if (setClause.length === 0) {
     return dbGetRelation(db, id);
   }
 
-  values.push(id);
-
   const query = `
     UPDATE relations
-    SET ${setClause.join(', ')}
-    WHERE id = $${paramCount}
-    RETURNING id, created_at, subject_entity_id, subject_relation_id, 
-              predicate, object_entity_id, object_relation_id
+    SET ${setClause}
+    WHERE id = $${nextParamIndex}
+    RETURNING ${relationColumnsStr}
   `;
 
-  const result = await db.query(query, values);
+  const result = await db.query(query, [...values, id]);
   return result.rows[0] || null;
 }
 

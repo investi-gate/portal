@@ -6,15 +6,30 @@ import {
   analyzeEntityImportance,
   findRelationPatterns,
   detectClusters,
-  suggestRelations
+  suggestRelations,
+  EntityScore,
+  RelationPattern,
+  ClusterInfo,
+  SuggestedRelation
 } from '@/lib/ai-analysis';
+import { analyzeRequestSchema } from '../schemas';
 
 const pool = createPool();
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const analysisType = body.type || 'all';
+    
+    // Validate request body
+    const validationResult = analyzeRequestSchema.safeParse(body);
+    if (!validationResult.success) {
+      return NextResponse.json(
+        { error: 'Validation failed', issues: validationResult.error.issues },
+        { status: 400 }
+      );
+    }
+    
+    const { type: analysisType = 'all' } = validationResult.data;
 
     // Fetch data
     const [entities, relations] = await Promise.all([
@@ -22,7 +37,14 @@ export async function POST(request: NextRequest) {
       dbGetAllRelations(pool)
     ]);
 
-    const results: any = {};
+    interface AnalysisResults {
+      entityScores?: EntityScore[];
+      relationPatterns?: RelationPattern[];
+      clusters?: ClusterInfo[];
+      suggestedRelations?: SuggestedRelation[];
+    }
+    
+    const results: AnalysisResults = {};
 
     if (analysisType === 'all' || analysisType === 'importance') {
       results.entityScores = analyzeEntityImportance(entities, relations);

@@ -11,16 +11,10 @@ const entityNodeState = proxy({
 });
 
 export function EntityNode({ data }: NodeProps<EntityNodeData>) {
-  const { entity, label, importance = 0, imageUrl } = data;
+  const { entity, label, imageUrl } = data;
   const state = useSnapshot(entityNodeState);
   
-  const getImportanceSize = () => {
-    const baseSize = 160;
-    const scale = 1 + (importance * 0.3);
-    return baseSize * scale;
-  };
-
-  const size = getImportanceSize();
+  const size = 160; // Fixed size for all entities
 
   const getEntityIcon = () => {
     if (entity.type_image_portion_id) return <Crop className="h-3 w-3 flex-shrink-0" />;

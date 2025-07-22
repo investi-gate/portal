@@ -4,7 +4,7 @@ export interface Bucket {
   entity_type_facial_data: Record<string, EntityTypeFacialData>;
   entity_type_text_data: Record<string, EntityTypeTextData>;
   entity_type_image_data: Record<string, EntityTypeImageData>;
-  entity_type_image_portion: Record<string, EntityTypeImagePortion>;
+  entity_type_image_portion_data: Record<string, EntityTypeImagePortion>;
   entities: Record<string, Entity>;
   relations: Record<string, Relation>;
 }
@@ -22,7 +22,7 @@ export interface Media {
   mime_type: string;
   storage_type: string;
   url: string | null;
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
   created_at: Date;
   updated_at: Date;
 }
@@ -33,7 +33,7 @@ export interface FaceEmbedding {
   embedding_dimension: number;
   model_name: string;
   model_version: string;
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
   created_at: Date;
   updated_at: Date;
 }
@@ -100,20 +100,62 @@ export interface Relation {
   object_relation_id: string | null;
 }
 
-export interface CreateEntityInput {
-  type_facial_data_id?: string;
-  type_text_data_id?: string;
-  type_image_data_id?: string;
-  type_image_portion_id?: string;
+export interface CreateNothingDataEntityInput {
+  type_facial_data_id?: never;
+  type_text_data_id?: never;
+  type_image_data_id?: never;
+  type_image_portion_id?: never;
 }
 
-export interface CreateRelationInput {
-  subject_entity_id?: string;
-  subject_relation_id?: string;
-  predicate: string;
-  object_entity_id?: string;
-  object_relation_id?: string;
+export interface CreateFaceDataEntityInput extends Omit<CreateNothingDataEntityInput, 'type_facial_data_id'> {
+  type_facial_data_id: string;
 }
+
+export interface CreateTextDataEntityInput extends Omit<CreateNothingDataEntityInput, 'type_text_data_id'> {
+  type_text_data_id: string;
+}
+
+export interface CreateImageDataEntityInput extends Omit<CreateNothingDataEntityInput, 'type_image_data_id'> {
+  type_image_data_id: string;
+}
+
+export interface CreateImagePortionEntityInput extends Omit<CreateNothingDataEntityInput, 'type_image_portion_id'> {
+  type_image_portion_id: string;
+}
+
+export type CreateEntityInput = CreateFaceDataEntityInput | CreateTextDataEntityInput | CreateImageDataEntityInput | CreateImagePortionEntityInput;
+
+
+export interface CreateRelationNoSubjectInput {
+  subject_entity_id?: never;
+  subject_relation_id?: never;
+}
+
+export interface CreateRelationNoObjectInput {
+  object_entity_id?: never;
+  object_relation_id?: never;
+}
+
+export interface CreateRelationEntitySubjectInput extends Omit<CreateRelationNoSubjectInput, 'subject_entity_id'> {
+  subject_entity_id: string;
+}
+
+export interface CreateRelationRelationSubjectInput extends Omit<CreateRelationNoSubjectInput, 'subject_relation_id'> {
+  subject_relation_id: string;
+}
+
+export interface CreateRelationEntityObjectInput extends Omit<CreateRelationNoObjectInput, 'object_entity_id'> {
+  object_entity_id: string;
+}
+
+export interface CreateRelationRelationObjectInput extends Omit<CreateRelationNoObjectInput, 'object_relation_id'> {
+  object_relation_id: string;
+}
+
+export type CreateRelationInput = 
+  & { predicate: string }
+  & (CreateRelationEntitySubjectInput | CreateRelationRelationSubjectInput)
+  & (CreateRelationEntityObjectInput | CreateRelationRelationObjectInput);
 
 export interface UpdateEntityInput {
   type_facial_data_id?: string | null;

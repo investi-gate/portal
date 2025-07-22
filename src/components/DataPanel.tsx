@@ -3,7 +3,7 @@
 import React from 'react';
 import { proxy, useSnapshot } from 'valtio';
 import { useEntities, useRelations } from '@/hooks/useDatabase';
-import type { Entity } from '@/db/types';
+import type { Entity, Relation } from '@/db/types';
 import {
   Dialog,
   DialogContent,
@@ -30,11 +30,40 @@ interface EntityWithContent extends Entity {
   text_content?: string;
 }
 
-// Create state proxy object
-const dataPanelState = proxy({
+interface RelationData {
+  predicate: string;
+  subject_entity_id?: string;
+  subject_relation_id?: string;
+  object_entity_id?: string;
+  object_relation_id?: string;
+}
+
+type TabType = 'entity' | 'relation';
+type EntityType = 'facial' | 'text' | 'image';
+type NodeType = 'entity' | 'relation';
+
+// Predicate options constant
+const PREDICATE_OPTIONS: ComboboxOption[] = [
+  { value: 'implies', label: 'implies' },
+  { value: 'contradicts', label: 'contradicts' },
+  { value: 'supports', label: 'supports' },
+  { value: 'refutes', label: 'refutes' },
+  { value: 'relates-to', label: 'relates to' },
+  { value: 'causes', label: 'causes' },
+  { value: 'caused-by', label: 'caused by' },
+  { value: 'contains', label: 'contains' },
+  { value: 'part-of', label: 'part of' },
+  { value: 'precedes', label: 'precedes' },
+  { value: 'follows', label: 'follows' },
+  { value: 'equals', label: 'equals' },
+  { value: 'depends-on', label: 'depends on' },
+];
+
+// Initial state configuration
+const getInitialState = () => ({
   modalOpen: false,
-  activeTab: 'entity' as 'entity' | 'relation',
-  entityType: 'facial' as 'facial' | 'text' | 'image',
+  activeTab: 'entity' as TabType,
+  entityType: 'facial' as EntityType,
   textContent: '',
   imageMediaId: '',
   imageCaption: '',
@@ -45,32 +74,40 @@ const dataPanelState = proxy({
   selectedSubject: '',
   selectedObject: '',
   predicate: '',
-  subjectType: 'entity' as 'entity' | 'relation',
-  objectType: 'entity' as 'entity' | 'relation',
+  subjectType: 'entity' as NodeType,
+  objectType: 'entity' as NodeType,
 });
+
+// Create state proxy object
+const dataPanelState = proxy(getInitialState());
 
 export function DataPanel({ preselectedEntity, preselectedRelation, preselectedAsSubject = true, onOpen }: DataPanelProps) {
   const { entities, createEntity, deleteEntity } = useEntities();
   const { relations, createRelation, deleteRelation } = useRelations();
   const state = useSnapshot(dataPanelState);
 
+  // Helper function to get entity types
+  const getEntityTypes = (entity: EntityWithContent): string[] => {
+    const types = [];
+    if (entity.type_facial_data_id) types.push('👤 Facial');
+    if (entity.type_text_data_id) types.push('📝 Text');
+    if (entity.type_image_data_id) types.push('🖼️ Image');
+    return types;
+  };
+
+  // Helper function to get text preview
+  const getTextPreview = (text: string | undefined, maxLength = 50): string => {
+    if (!text) return '';
+    return text.length > maxLength 
+      ? text.slice(0, maxLength) + '...'
+      : text;
+  };
+
   // Prepare entity options for combobox
   const entityOptions: ComboboxOption[] = React.useMemo(() => {
     return entities.map((entity: EntityWithContent) => {
-      const types = [];
-      if (entity.type_facial_data_id) types.push('👤 Facial');
-      if (entity.type_text_data_id) types.push('📝 Text');
-      if (entity.type_image_data_id) types.push('🖼️ Image');
-      
-      // Get text preview if available
-      let textPreview = '';
-      if (entity.text_content) {
-        const maxLength = 50;
-        textPreview = entity.text_content.length > maxLength 
-          ? entity.text_content.slice(0, maxLength) + '...'
-          : entity.text_content;
-      }
-      
+      const types = getEntityTypes(entity);
+      const textPreview = getTextPreview(entity.text_content);
       const label = textPreview || `Entity ${entity.id.slice(0, 8)}`;
       const sublabel = types.join(', ') || 'No data';
       
@@ -85,20 +122,23 @@ export function DataPanel({ preselectedEntity, preselectedRelation, preselectedA
     });
   }, [entities]);
 
+  // Helper function to format relation label
+  const formatRelationLabel = (relation: Relation): string => {
+    const subjectId = relation.subject_entity_id || relation.subject_relation_id;
+    const objectId = relation.object_entity_id || relation.object_relation_id;
+    const subjectType = relation.subject_entity_id ? 'E' : 'R';
+    const objectType = relation.object_entity_id ? 'E' : 'R';
+    
+    return `${subjectType}:${subjectId?.slice(0, 6)} → ${relation.predicate} → ${objectType}:${objectId?.slice(0, 6)}`;
+  };
+
   // Prepare relation options for combobox
   const relationOptions: ComboboxOption[] = React.useMemo(() => {
-    return relations.map((relation) => {
-      const subjectId = relation.subject_entity_id || relation.subject_relation_id;
-      const objectId = relation.object_entity_id || relation.object_relation_id;
-      const subjectType = relation.subject_entity_id ? 'E' : 'R';
-      const objectType = relation.object_entity_id ? 'E' : 'R';
-      
-      return {
-        value: relation.id,
-        label: `${subjectType}:${subjectId?.slice(0, 6)} → ${relation.predicate} → ${objectType}:${objectId?.slice(0, 6)}`,
-        sublabel: `Relation ${relation.id.slice(0, 8)}`,
-      };
-    });
+    return relations.map((relation) => ({
+      value: relation.id,
+      label: formatRelationLabel(relation),
+      sublabel: `Relation ${relation.id.slice(0, 8)}`,
+    }));
   }, [relations]);
 
   const handleFileUpload = async () => {
@@ -136,154 +176,146 @@ export function DataPanel({ preselectedEntity, preselectedRelation, preselectedA
     }
   };
 
+  // Helper function to reset form state
+  const resetFormState = () => {
+    Object.assign(dataPanelState, getInitialState());
+  };
+
+  // Helper function to create entity type
+  const createEntityType = async (type: EntityType): Promise<string | undefined> => {
+    switch (type) {
+      case 'facial':
+        return createFacialEntity();
+      case 'text':
+        return createTextEntity();
+      case 'image':
+        return createImageEntity();
+      default:
+        return undefined;
+    }
+  };
+
+  // Create facial entity
+  const createFacialEntity = async (): Promise<string> => {
+    const response = await fetch('/api/entity-types/facial', {
+      method: 'POST',
+    });
+    if (!response.ok) throw new Error('Failed to create facial data type');
+    const data = await response.json();
+    return data.facialData.id;
+  };
+
+  // Create text entity
+  const createTextEntity = async (): Promise<string | undefined> => {
+    if (!dataPanelState.textContent?.trim()) {
+      alert('Text content is required for text entities');
+      return undefined;
+    }
+    
+    const response = await fetch('/api/entity-types/text', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: dataPanelState.textContent }),
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('Failed to create text data:', errorData);
+      throw new Error(errorData.error || 'Failed to create text data type');
+    }
+    
+    const data = await response.json();
+    return data.textData.id;
+  };
+
+  // Create image entity
+  const createImageEntity = async (): Promise<string | undefined> => {
+    let mediaId = dataPanelState.imageMediaId;
+    
+    // Upload file if needed
+    if (!mediaId && dataPanelState.selectedFile) {
+      mediaId = await handleFileUpload();
+      if (!mediaId) return undefined;
+    }
+    
+    if (!mediaId?.trim()) {
+      alert('Please upload an image or provide a media ID');
+      return undefined;
+    }
+    
+    const response = await fetch('/api/entity-types/image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        media_id: mediaId,
+        caption: dataPanelState.imageCaption || null,
+        alt_text: dataPanelState.imageAltText || null
+      }),
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('Failed to create image data:', errorData);
+      throw new Error(errorData.error || 'Failed to create image data type');
+    }
+    
+    const data = await response.json();
+    return data.imageData.id;
+  };
+
   const handleCreateEntity = async () => {
     try {
-      let facialId: string | undefined;
-      let textId: string | undefined;
-      let imageId: string | undefined;
-
-      // Create entity type records first
-      if (dataPanelState.entityType === 'facial') {
-        const facialResponse = await fetch('/api/entity-types/facial', {
-          method: 'POST',
-        });
-        if (!facialResponse.ok) throw new Error('Failed to create facial data type');
-        const facialData = await facialResponse.json();
-        facialId = facialData.facialData.id;
-      }
-
-      if (dataPanelState.entityType === 'text') {
-        if (!dataPanelState.textContent || dataPanelState.textContent.trim() === '') {
-          alert('Text content is required for text entities');
-          return;
-        }
-        
-        const textResponse = await fetch('/api/entity-types/text', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ content: dataPanelState.textContent }),
-        });
-        
-        if (!textResponse.ok) {
-          const errorData = await textResponse.json();
-          console.error('Failed to create text data:', errorData);
-          throw new Error(errorData.error || 'Failed to create text data type');
-        }
-        
-        const textData = await textResponse.json();
-        textId = textData.textData.id;
-      }
-
-      if (dataPanelState.entityType === 'image') {
-        let mediaId = dataPanelState.imageMediaId;
-        
-        // If no media ID but file selected, upload first
-        if (!mediaId && dataPanelState.selectedFile) {
-          mediaId = await handleFileUpload();
-          if (!mediaId) {
-            return; // Upload failed
-          }
-        }
-        
-        if (!mediaId || mediaId.trim() === '') {
-          alert('Please upload an image or provide a media ID');
-          return;
-        }
-        
-        const imageResponse = await fetch('/api/entity-types/image', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ 
-            media_id: mediaId,
-            caption: dataPanelState.imageCaption || null,
-            alt_text: dataPanelState.imageAltText || null
-          }),
-        });
-        
-        if (!imageResponse.ok) {
-          const errorData = await imageResponse.json();
-          console.error('Failed to create image data:', errorData);
-          throw new Error(errorData.error || 'Failed to create image data type');
-        }
-        
-        const imageData = await imageResponse.json();
-        imageId = imageData.imageData.id;
-      }
-
-      // Ensure at least one type is specified
-      if (!facialId && !textId && !imageId) {
-        throw new Error('At least one entity type must be specified');
-      }
+      const entityId = await createEntityType(dataPanelState.entityType);
+      
+      if (!entityId) return;
 
       await createEntity({
-        type_facial_data_id: facialId,
-        type_text_data_id: textId,
-        type_image_data_id: imageId,
+        type_facial_data_id: dataPanelState.entityType === 'facial' ? entityId : undefined,
+        type_text_data_id: dataPanelState.entityType === 'text' ? entityId : undefined,
+        type_image_data_id: dataPanelState.entityType === 'image' ? entityId : undefined,
       });
       
       dataPanelState.modalOpen = false;
-      // Reset all form state
-      dataPanelState.activeTab = 'entity';
-      dataPanelState.entityType = 'facial';
-      dataPanelState.textContent = '';
-      dataPanelState.imageMediaId = '';
-      dataPanelState.imageCaption = '';
-      dataPanelState.imageAltText = '';
-      dataPanelState.selectedFile = null;
-      dataPanelState.uploadError = '';
-      dataPanelState.selectedSubject = '';
-      dataPanelState.selectedObject = '';
-      dataPanelState.predicate = '';
-      dataPanelState.subjectType = 'entity';
-      dataPanelState.objectType = 'entity';
+      resetFormState();
     } catch (error) {
       console.error('Failed to create entity:', error);
     }
   };
 
+  // Build relation data based on types
+  const buildRelationData = (): RelationData => {
+    const relationData: RelationData = {
+      predicate: dataPanelState.predicate,
+    };
+
+    // Set subject based on type
+    if (dataPanelState.subjectType === 'entity') {
+      relationData.subject_entity_id = dataPanelState.selectedSubject;
+    } else {
+      relationData.subject_relation_id = dataPanelState.selectedSubject;
+    }
+
+    // Set object based on type
+    if (dataPanelState.objectType === 'entity') {
+      relationData.object_entity_id = dataPanelState.selectedObject;
+    } else {
+      relationData.object_relation_id = dataPanelState.selectedObject;
+    }
+
+    return relationData;
+  };
+
   const handleCreateRelation = async () => {
-    if (!dataPanelState.selectedSubject || !dataPanelState.selectedObject || !dataPanelState.predicate) return;
+    if (!dataPanelState.selectedSubject || !dataPanelState.selectedObject || !dataPanelState.predicate) {
+      return;
+    }
 
     try {
-      const relationData: any = {
-        predicate: dataPanelState.predicate,
-      };
-
-      // Set subject based on type
-      if (dataPanelState.subjectType === 'entity') {
-        relationData.subject_entity_id = dataPanelState.selectedSubject;
-      } else {
-        relationData.subject_relation_id = dataPanelState.selectedSubject;
-      }
-
-      // Set object based on type
-      if (dataPanelState.objectType === 'entity') {
-        relationData.object_entity_id = dataPanelState.selectedObject;
-      } else {
-        relationData.object_relation_id = dataPanelState.selectedObject;
-      }
-
+      const relationData = buildRelationData();
       await createRelation(relationData);
       
       dataPanelState.modalOpen = false;
-      // Reset all form state
-      dataPanelState.activeTab = 'entity';
-      dataPanelState.entityType = 'facial';
-      dataPanelState.textContent = '';
-      dataPanelState.imageMediaId = '';
-      dataPanelState.imageCaption = '';
-      dataPanelState.imageAltText = '';
-      dataPanelState.selectedFile = null;
-      dataPanelState.uploadError = '';
-      dataPanelState.selectedSubject = '';
-      dataPanelState.selectedObject = '';
-      dataPanelState.predicate = '';
-      dataPanelState.subjectType = 'entity';
-      dataPanelState.objectType = 'entity';
+      resetFormState();
     } catch (error) {
       console.error('Failed to create relation:', error);
     }
@@ -297,44 +329,31 @@ export function DataPanel({ preselectedEntity, preselectedRelation, preselectedA
     }
   };
 
+  // Apply preselected values
+  const applyPreselectedValues = () => {
+    if (!preselectedEntity && !preselectedRelation) return;
+    
+    dataPanelState.activeTab = 'relation';
+    
+    const isEntity = Boolean(preselectedEntity);
+    const selectedId = preselectedEntity || preselectedRelation || '';
+    const nodeType: NodeType = isEntity ? 'entity' : 'relation';
+    
+    if (preselectedAsSubject) {
+      dataPanelState.subjectType = nodeType;
+      dataPanelState.selectedSubject = selectedId;
+    } else {
+      dataPanelState.objectType = nodeType;
+      dataPanelState.selectedObject = selectedId;
+    }
+  };
+
   // Handle dialog open/close with preselected values
   const handleDialogOpenChange = (open: boolean) => {
-    if (open && (preselectedEntity || preselectedRelation)) {
-      // Set preselected values when opening
-      dataPanelState.activeTab = 'relation';
-      
-      if (preselectedEntity) {
-        if (preselectedAsSubject) {
-          dataPanelState.subjectType = 'entity';
-          dataPanelState.selectedSubject = preselectedEntity;
-        } else {
-          dataPanelState.objectType = 'entity';
-          dataPanelState.selectedObject = preselectedEntity;
-        }
-      } else if (preselectedRelation) {
-        if (preselectedAsSubject) {
-          dataPanelState.subjectType = 'relation';
-          dataPanelState.selectedSubject = preselectedRelation;
-        } else {
-          dataPanelState.objectType = 'relation';
-          dataPanelState.selectedObject = preselectedRelation;
-        }
-      }
-    } else if (!open) {
-      // Reset all form state when closing
-      dataPanelState.activeTab = 'entity';
-      dataPanelState.entityType = 'facial';
-      dataPanelState.textContent = '';
-      dataPanelState.imageMediaId = '';
-      dataPanelState.imageCaption = '';
-      dataPanelState.imageAltText = '';
-      dataPanelState.selectedFile = null;
-      dataPanelState.uploadError = '';
-      dataPanelState.selectedSubject = '';
-      dataPanelState.selectedObject = '';
-      dataPanelState.predicate = '';
-      dataPanelState.subjectType = 'entity';
-      dataPanelState.objectType = 'entity';
+    if (open) {
+      applyPreselectedValues();
+    } else {
+      resetFormState();
     }
     dataPanelState.modalOpen = open;
   };
@@ -361,7 +380,7 @@ export function DataPanel({ preselectedEntity, preselectedRelation, preselectedA
           </DialogDescription>
         </DialogHeader>
         
-        <Tabs value={state.activeTab} onValueChange={(value: string) => dataPanelState.activeTab = value as 'entity' | 'relation'} className="w-full">
+        <Tabs value={state.activeTab} onValueChange={(value: string) => dataPanelState.activeTab = value as TabType} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="entity" data-test="tab-entity">
               <User className="h-4 w-4 mr-2" />
@@ -374,7 +393,7 @@ export function DataPanel({ preselectedEntity, preselectedRelation, preselectedA
           </TabsList>
           
           <TabsContent value="entity" className="mt-4">
-            <Tabs value={state.entityType} onValueChange={(value: string) => dataPanelState.entityType = value as 'facial' | 'text' | 'image'} className="w-full">
+            <Tabs value={state.entityType} onValueChange={(value: string) => dataPanelState.entityType = value as EntityType} className="w-full">
               <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="facial" data-test="entity-type-facial" className="flex items-center gap-2">
                   <User className="h-4 w-4" />
@@ -562,21 +581,7 @@ export function DataPanel({ preselectedEntity, preselectedRelation, preselectedA
                 <label className="text-sm font-medium text-gray-700">Predicate</label>
                 <div className="mt-1">
                   <Combobox
-                    options={[
-                      { value: 'implies', label: 'implies' },
-                      { value: 'contradicts', label: 'contradicts' },
-                      { value: 'supports', label: 'supports' },
-                      { value: 'refutes', label: 'refutes' },
-                      { value: 'relates-to', label: 'relates to' },
-                      { value: 'causes', label: 'causes' },
-                      { value: 'caused-by', label: 'caused by' },
-                      { value: 'contains', label: 'contains' },
-                      { value: 'part-of', label: 'part of' },
-                      { value: 'precedes', label: 'precedes' },
-                      { value: 'follows', label: 'follows' },
-                      { value: 'equals', label: 'equals' },
-                      { value: 'depends-on', label: 'depends on' },
-                    ]}
+                    options={PREDICATE_OPTIONS}
                     value={state.predicate}
                     onValueChange={(value) => dataPanelState.predicate = value}
                     placeholder="Select or type predicate..."

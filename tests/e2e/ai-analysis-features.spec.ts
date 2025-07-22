@@ -1,69 +1,184 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, Page } from '@playwright/test';
 import { TestDatabaseUtils } from './helpers/db-utils';
+
+// Helper functions for AI analysis operations
+class AIAnalysisHelpers {
+  constructor(private page: Page) {}
+
+  async ensureAISidebarVisible() {
+    const aiSidebar = this.page.getByTestId('ai-sidebar');
+    if (!(await aiSidebar.isVisible())) {
+      await this.page.getByTestId('toggle-ai-sidebar').click();
+      await expect(aiSidebar).toBeVisible();
+    }
+  }
+
+  async runAnalysis(tabId: string, buttonId: string, timeout = 10000) {
+    await this.page.getByTestId(tabId).click();
+    await this.page.getByTestId(buttonId).click();
+    await this.waitForAnalysisComplete(timeout);
+  }
+
+  async waitForAnalysisComplete(timeout = 10000) {
+    await expect(this.page.getByTestId('analysis-loading')).toBeVisible();
+    await expect(this.page.getByTestId('analysis-loading')).toBeHidden({ timeout });
+  }
+
+  async verifyItemsInDescendingOrder(selector: string, scoreSelector: string) {
+    const scores = await this.page.locator(selector).locator(scoreSelector).allTextContents();
+    const numericScores = scores.map(s => parseFloat(s));
+    for (let i = 1; i < numericScores.length; i++) {
+      expect(numericScores[i-1]).toBeGreaterThanOrEqual(numericScores[i]);
+    }
+  }
+
+  async selectMultipleItems(itemSelector: string, selectButtonSelector: string, count: number) {
+    const items = this.page.locator(itemSelector);
+    const itemCount = Math.min(count, await items.count());
+    
+    for (let i = 0; i < itemCount; i++) {
+      await items.nth(i).getByTestId(selectButtonSelector).click();
+    }
+    
+    return itemCount;
+  }
+
+  async verifyFilteredItems(itemSelector: string, expectedText: string) {
+    const items = this.page.locator(itemSelector);
+    const count = await items.count();
+    
+    for (let i = 0; i < count; i++) {
+      await expect(items.nth(i)).toContainText(expectedText);
+    }
+  }
+
+  async saveAnalysisSession(sessionName: string) {
+    await this.page.getByTestId('save-analysis-session').click();
+    await this.page.getByTestId('session-name-input').fill(sessionName);
+    await this.page.getByTestId('confirm-save-session').click();
+    await expect(this.page.getByTestId('session-saved-notification')).toBeVisible();
+    await expect(this.page.getByTestId('session-saved-notification')).toContainText('saved successfully');
+  }
+
+  async loadAnalysisSession(sessionName: string) {
+    await this.page.getByTestId('load-analysis-session').click();
+    await this.page.getByTestId('session-list-item').filter({ hasText: sessionName }).click();
+    await this.page.getByTestId('confirm-load-session').click();
+  }
+
+  async mockAPIError(url: string, status = 500, body = 'Analysis failed') {
+    await this.page.route(url, route => 
+      route.fulfill({ status, body })
+    );
+  }
+
+  async verifyErrorHandling() {
+    await expect(this.page.getByTestId('analysis-error')).toBeVisible({ timeout: 10000 });
+    await expect(this.page.getByTestId('analysis-error')).toContainText('failed');
+    await expect(this.page.getByTestId('retry-analysis')).toBeVisible();
+  }
+
+  async verifyEmptyGraphMessage() {
+    await expect(this.page.getByTestId('empty-graph-message')).toBeVisible();
+    await expect(this.page.getByTestId('empty-graph-message')).toContainText('No data to analyze');
+  }
+}
+
+// Test data setup helpers
+class TestDataSetup {
+  constructor(private dbUtils: TestDatabaseUtils) {}
+
+  async createComplexNetwork() {
+    const entities: string[] = [];
+    
+    // Create hub entity with many connections
+    const hubEntity = await this.dbUtils.createTestEntity({ facial: true, text: true });
+    entities.push(hubEntity);
+    
+    // Create spoke entities
+    const spokeEntities = await this.createSpokeEntities(5);
+    entities.push(...spokeEntities);
+    
+    // Create hub connections
+    await this.connectEntitiesToHub(hubEntity, spokeEntities);
+    
+    // Create a separate cluster
+    const clusterEntities = await this.createClusterEntities(4);
+    entities.push(...clusterEntities);
+    
+    // Create dense connections within cluster
+    await this.createDenseClusterConnections(clusterEntities);
+    
+    // Create isolated entities
+    await this.createIsolatedEntities(3);
+    
+    return entities;
+  }
+
+  private async createSpokeEntities(count: number) {
+    const entities = [];
+    for (let i = 0; i < count; i++) {
+      entities.push(await this.dbUtils.createTestEntity({ 
+        facial: i % 2 === 0, 
+        text: i % 2 === 1 
+      }));
+    }
+    return entities;
+  }
+
+  private async connectEntitiesToHub(hub: string, spokes: string[]) {
+    for (const spoke of spokes) {
+      await this.dbUtils.createTestRelation(hub, 'connected_to', spoke);
+    }
+  }
+
+  private async createClusterEntities(count: number) {
+    const entities = [];
+    for (let i = 0; i < count; i++) {
+      entities.push(await this.dbUtils.createTestEntity({ 
+        facial: true, 
+        text: false 
+      }));
+    }
+    return entities;
+  }
+
+  private async createDenseClusterConnections(entities: string[]) {
+    for (let i = 0; i < entities.length; i++) {
+      for (let j = i + 1; j < entities.length; j++) {
+        await this.dbUtils.createTestRelation(entities[i], 'collaborates_with', entities[j]);
+      }
+    }
+  }
+
+  private async createIsolatedEntities(count: number) {
+    for (let i = 0; i < count; i++) {
+      await this.dbUtils.createTestEntity({ facial: false, text: true });
+    }
+  }
+}
 
 test.describe('AI Analysis Features', () => {
   let dbUtils: TestDatabaseUtils;
+  let aiHelpers: AIAnalysisHelpers;
+  let testDataSetup: TestDataSetup;
   let testEntities: string[] = [];
-  let testRelations: string[] = [];
 
   test.beforeAll(async () => {
     dbUtils = new TestDatabaseUtils();
   });
 
   test.beforeEach(async ({ page }) => {
+    aiHelpers = new AIAnalysisHelpers(page);
+    testDataSetup = new TestDataSetup(dbUtils);
+    
     // Clean database and create complex test network
     await dbUtils.cleanDatabase();
-    
-    // Create a network of entities to analyze
-    // Hub entity with many connections
-    const hubEntity = await dbUtils.createTestEntity({ facial: true, text: true });
-    
-    // Spoke entities
-    const spokeEntities = [];
-    for (let i = 0; i < 5; i++) {
-      spokeEntities.push(await dbUtils.createTestEntity({ 
-        facial: i % 2 === 0, 
-        text: i % 2 === 1 
-      }));
-    }
-    
-    // Create hub connections
-    for (const spoke of spokeEntities) {
-      await dbUtils.createTestRelation(hubEntity, 'connected_to', spoke);
-    }
-    
-    // Create a separate cluster
-    const clusterEntities = [];
-    for (let i = 0; i < 4; i++) {
-      clusterEntities.push(await dbUtils.createTestEntity({ 
-        facial: true, 
-        text: false 
-      }));
-    }
-    
-    // Create dense connections within cluster
-    for (let i = 0; i < clusterEntities.length; i++) {
-      for (let j = i + 1; j < clusterEntities.length; j++) {
-        await dbUtils.createTestRelation(clusterEntities[i], 'collaborates_with', clusterEntities[j]);
-      }
-    }
-    
-    // Create some isolated entities
-    for (let i = 0; i < 3; i++) {
-      await dbUtils.createTestEntity({ facial: false, text: true });
-    }
-    
-    testEntities = [hubEntity, ...spokeEntities, ...clusterEntities];
+    testEntities = await testDataSetup.createComplexNetwork();
     
     await page.goto('/');
     await page.waitForLoadState('networkidle');
-    
-    // Ensure AI sidebar is visible
-    const aiSidebar = page.getByTestId('ai-sidebar');
-    if (!(await aiSidebar.isVisible())) {
-      await page.getByTestId('toggle-ai-sidebar').click();
-      await expect(aiSidebar).toBeVisible();
-    }
+    await aiHelpers.ensureAISidebarVisible();
   });
 
   test.afterAll(async () => {
@@ -72,15 +187,7 @@ test.describe('AI Analysis Features', () => {
 
   test.describe('Importance Analysis', () => {
     test('should display entity importance rankings', async ({ page }) => {
-      // Navigate to importance analysis tab
-      await page.getByTestId('ai-importance-tab').click();
-      
-      // Trigger analysis
-      await page.getByTestId('run-importance-analysis').click();
-      
-      // Wait for analysis to complete
-      await expect(page.getByTestId('analysis-loading')).toBeVisible();
-      await expect(page.getByTestId('analysis-loading')).toBeHidden({ timeout: 10000 });
+      await aiHelpers.runAnalysis('ai-importance-tab', 'run-importance-analysis');
       
       // Verify importance results are displayed
       const importanceList = page.locator('[data-test="importance-item"]');
@@ -92,47 +199,33 @@ test.describe('AI Analysis Features', () => {
       await expect(topEntity.getByTestId('importance-score')).toBeVisible();
       
       // Verify scores are in descending order
-      const scores = await importanceList.locator('[data-test="importance-score"]').allTextContents();
-      const numericScores = scores.map(s => parseFloat(s));
-      for (let i = 1; i < numericScores.length; i++) {
-        expect(numericScores[i-1]).toBeGreaterThanOrEqual(numericScores[i]);
-      }
+      await aiHelpers.verifyItemsInDescendingOrder('[data-test="importance-item"]', '[data-test="importance-score"]');
     });
 
     test('should update graph visualization based on importance', async ({ page }) => {
-      // Run importance analysis
-      await page.getByTestId('ai-importance-tab').click();
-      await page.getByTestId('run-importance-analysis').click();
-      await expect(page.getByTestId('analysis-loading')).toBeHidden({ timeout: 10000 });
+      await aiHelpers.runAnalysis('ai-importance-tab', 'run-importance-analysis');
       
       // Enable importance-based visualization
       await page.getByTestId('apply-importance-visualization').click();
       
       // Verify nodes are sized based on importance
       const nodes = page.locator('.react-flow__node');
-      const firstNode = nodes.first();
-      const lastNode = nodes.last();
+      const getNodeSize = async (node: any) => {
+        return await node.evaluate((el: HTMLElement) => {
+          const style = window.getComputedStyle(el);
+          return parseInt(style.width);
+        });
+      };
       
-      // Get computed styles
-      const firstNodeSize = await firstNode.evaluate(el => {
-        const style = window.getComputedStyle(el);
-        return parseInt(style.width);
-      });
-      
-      const lastNodeSize = await lastNode.evaluate(el => {
-        const style = window.getComputedStyle(el);
-        return parseInt(style.width);
-      });
+      const firstNodeSize = await getNodeSize(nodes.first());
+      const lastNodeSize = await getNodeSize(nodes.last());
       
       // More important nodes should be larger
       expect(firstNodeSize).toBeGreaterThan(lastNodeSize);
     });
 
     test('should highlight entity when clicked in importance list', async ({ page }) => {
-      // Run importance analysis
-      await page.getByTestId('ai-importance-tab').click();
-      await page.getByTestId('run-importance-analysis').click();
-      await expect(page.getByTestId('analysis-loading')).toBeHidden({ timeout: 10000 });
+      await aiHelpers.runAnalysis('ai-importance-tab', 'run-importance-analysis');
       
       // Click on an entity in the importance list
       const importanceItem = page.locator('[data-test="importance-item"]').first();
@@ -148,10 +241,7 @@ test.describe('AI Analysis Features', () => {
     });
 
     test('should export importance analysis results', async ({ page }) => {
-      // Run importance analysis
-      await page.getByTestId('ai-importance-tab').click();
-      await page.getByTestId('run-importance-analysis').click();
-      await expect(page.getByTestId('analysis-loading')).toBeHidden({ timeout: 10000 });
+      await aiHelpers.runAnalysis('ai-importance-tab', 'run-importance-analysis');
       
       // Set up download promise
       const downloadPromise = page.waitForEvent('download');
@@ -168,15 +258,7 @@ test.describe('AI Analysis Features', () => {
 
   test.describe('Pattern Detection', () => {
     test('should identify common relationship patterns', async ({ page }) => {
-      // Navigate to pattern detection tab
-      await page.getByTestId('ai-patterns-tab').click();
-      
-      // Run pattern detection
-      await page.getByTestId('run-pattern-detection').click();
-      
-      // Wait for analysis
-      await expect(page.getByTestId('analysis-loading')).toBeVisible();
-      await expect(page.getByTestId('analysis-loading')).toBeHidden({ timeout: 10000 });
+      await aiHelpers.runAnalysis('ai-patterns-tab', 'run-pattern-detection');
       
       // Verify patterns are displayed
       const patternList = page.locator('[data-test="pattern-item"]');
@@ -190,10 +272,7 @@ test.describe('AI Analysis Features', () => {
     });
 
     test('should visualize pattern instances', async ({ page }) => {
-      // Run pattern detection
-      await page.getByTestId('ai-patterns-tab').click();
-      await page.getByTestId('run-pattern-detection').click();
-      await expect(page.getByTestId('analysis-loading')).toBeHidden({ timeout: 10000 });
+      await aiHelpers.runAnalysis('ai-patterns-tab', 'run-pattern-detection');
       
       // Click on a pattern to visualize
       const patternItem = page.locator('[data-test="pattern-item"]').first();
@@ -208,29 +287,17 @@ test.describe('AI Analysis Features', () => {
     });
 
     test('should filter patterns by type', async ({ page }) => {
-      // Run pattern detection
-      await page.getByTestId('ai-patterns-tab').click();
-      await page.getByTestId('run-pattern-detection').click();
-      await expect(page.getByTestId('analysis-loading')).toBeHidden({ timeout: 10000 });
+      await aiHelpers.runAnalysis('ai-patterns-tab', 'run-pattern-detection');
       
       // Apply filter
       await page.getByTestId('pattern-type-filter').selectOption('triangular');
       
       // Verify filtered results
-      const patternItems = page.locator('[data-test="pattern-item"]');
-      const count = await patternItems.count();
-      
-      // All visible patterns should be triangular type
-      for (let i = 0; i < count; i++) {
-        await expect(patternItems.nth(i)).toContainText('triangular');
-      }
+      await aiHelpers.verifyFilteredItems('[data-test="pattern-item"]', 'triangular');
     });
 
     test('should show pattern statistics', async ({ page }) => {
-      // Run pattern detection
-      await page.getByTestId('ai-patterns-tab').click();
-      await page.getByTestId('run-pattern-detection').click();
-      await expect(page.getByTestId('analysis-loading')).toBeHidden({ timeout: 10000 });
+      await aiHelpers.runAnalysis('ai-patterns-tab', 'run-pattern-detection');
       
       // Verify statistics panel
       const statsPanel = page.getByTestId('pattern-statistics');
@@ -243,15 +310,7 @@ test.describe('AI Analysis Features', () => {
 
   test.describe('Cluster Detection', () => {
     test('should identify entity clusters', async ({ page }) => {
-      // Navigate to cluster detection tab
-      await page.getByTestId('ai-clusters-tab').click();
-      
-      // Run cluster detection
-      await page.getByTestId('run-cluster-detection').click();
-      
-      // Wait for analysis
-      await expect(page.getByTestId('analysis-loading')).toBeVisible();
-      await expect(page.getByTestId('analysis-loading')).toBeHidden({ timeout: 10000 });
+      await aiHelpers.runAnalysis('ai-clusters-tab', 'run-cluster-detection');
       
       // Verify clusters are displayed
       const clusterList = page.locator('[data-test="cluster-item"]');
@@ -266,10 +325,7 @@ test.describe('AI Analysis Features', () => {
     });
 
     test('should visualize cluster members', async ({ page }) => {
-      // Run cluster detection
-      await page.getByTestId('ai-clusters-tab').click();
-      await page.getByTestId('run-cluster-detection').click();
-      await expect(page.getByTestId('analysis-loading')).toBeHidden({ timeout: 10000 });
+      await aiHelpers.runAnalysis('ai-clusters-tab', 'run-cluster-detection');
       
       // Click on a cluster to visualize
       const clusterItem = page.locator('[data-test="cluster-item"]').first();
@@ -283,10 +339,7 @@ test.describe('AI Analysis Features', () => {
     });
 
     test('should show cluster relationships', async ({ page }) => {
-      // Run cluster detection
-      await page.getByTestId('ai-clusters-tab').click();
-      await page.getByTestId('run-cluster-detection').click();
-      await expect(page.getByTestId('analysis-loading')).toBeHidden({ timeout: 10000 });
+      await aiHelpers.runAnalysis('ai-clusters-tab', 'run-cluster-detection');
       
       // Expand cluster details
       const clusterItem = page.locator('[data-test="cluster-item"]').first();
@@ -299,24 +352,17 @@ test.describe('AI Analysis Features', () => {
     });
 
     test('should merge clusters', async ({ page }) => {
-      // Run cluster detection
-      await page.getByTestId('ai-clusters-tab').click();
-      await page.getByTestId('run-cluster-detection').click();
-      await expect(page.getByTestId('analysis-loading')).toBeHidden({ timeout: 10000 });
+      await aiHelpers.runAnalysis('ai-clusters-tab', 'run-cluster-detection');
       
       // Select multiple clusters
-      const cluster1 = page.locator('[data-test="cluster-item"]').nth(0);
-      const cluster2 = page.locator('[data-test="cluster-item"]').nth(1);
-      
-      await cluster1.getByTestId('select-cluster').click();
-      await cluster2.getByTestId('select-cluster').click();
+      await aiHelpers.selectMultipleItems('[data-test="cluster-item"]', 'select-cluster', 2);
       
       // Merge clusters
       await page.getByTestId('merge-clusters-button').click();
       await page.getByTestId('confirm-merge').click();
       
       // Verify clusters are merged
-      await expect(page.getByTestId('analysis-loading')).toBeHidden({ timeout: 5000 });
+      await aiHelpers.waitForAnalysisComplete(5000);
       const updatedClusters = page.locator('[data-test="cluster-item"]');
       const newCount = await updatedClusters.count();
       expect(newCount).toBeLessThan(3);
@@ -325,15 +371,7 @@ test.describe('AI Analysis Features', () => {
 
   test.describe('Relationship Suggestions', () => {
     test('should suggest potential relationships', async ({ page }) => {
-      // Navigate to suggestions tab
-      await page.getByTestId('ai-suggestions-tab').click();
-      
-      // Run relationship suggestion analysis
-      await page.getByTestId('run-suggestion-analysis').click();
-      
-      // Wait for analysis
-      await expect(page.getByTestId('analysis-loading')).toBeVisible();
-      await expect(page.getByTestId('analysis-loading')).toBeHidden({ timeout: 10000 });
+      await aiHelpers.runAnalysis('ai-suggestions-tab', 'run-suggestion-analysis');
       
       // Verify suggestions are displayed
       const suggestionList = page.locator('[data-test="suggestion-item"]');
@@ -347,10 +385,7 @@ test.describe('AI Analysis Features', () => {
     });
 
     test('should preview suggested relationship', async ({ page }) => {
-      // Run suggestion analysis
-      await page.getByTestId('ai-suggestions-tab').click();
-      await page.getByTestId('run-suggestion-analysis').click();
-      await expect(page.getByTestId('analysis-loading')).toBeHidden({ timeout: 10000 });
+      await aiHelpers.runAnalysis('ai-suggestions-tab', 'run-suggestion-analysis');
       
       // Preview a suggestion
       const suggestionItem = page.locator('[data-test="suggestion-item"]').first();
@@ -362,10 +397,7 @@ test.describe('AI Analysis Features', () => {
     });
 
     test('should apply suggested relationship', async ({ page }) => {
-      // Run suggestion analysis
-      await page.getByTestId('ai-suggestions-tab').click();
-      await page.getByTestId('run-suggestion-analysis').click();
-      await expect(page.getByTestId('analysis-loading')).toBeHidden({ timeout: 10000 });
+      await aiHelpers.runAnalysis('ai-suggestions-tab', 'run-suggestion-analysis');
       
       // Get initial relation count
       const initialRelationCount = await page.locator('[data-test="relation-item"]').count();
@@ -385,10 +417,7 @@ test.describe('AI Analysis Features', () => {
     });
 
     test('should filter suggestions by confidence', async ({ page }) => {
-      // Run suggestion analysis
-      await page.getByTestId('ai-suggestions-tab').click();
-      await page.getByTestId('run-suggestion-analysis').click();
-      await expect(page.getByTestId('analysis-loading')).toBeHidden({ timeout: 10000 });
+      await aiHelpers.runAnalysis('ai-suggestions-tab', 'run-suggestion-analysis');
       
       // Set confidence threshold
       await page.getByTestId('confidence-threshold-slider').fill('80');
@@ -405,18 +434,14 @@ test.describe('AI Analysis Features', () => {
     });
 
     test('should bulk apply suggestions', async ({ page }) => {
-      // Run suggestion analysis
-      await page.getByTestId('ai-suggestions-tab').click();
-      await page.getByTestId('run-suggestion-analysis').click();
-      await expect(page.getByTestId('analysis-loading')).toBeHidden({ timeout: 10000 });
+      await aiHelpers.runAnalysis('ai-suggestions-tab', 'run-suggestion-analysis');
       
       // Select multiple suggestions
-      const suggestions = page.locator('[data-test="suggestion-item"]');
-      const suggestionCount = Math.min(3, await suggestions.count());
-      
-      for (let i = 0; i < suggestionCount; i++) {
-        await suggestions.nth(i).getByTestId('select-suggestion').click();
-      }
+      const suggestionCount = await aiHelpers.selectMultipleItems(
+        '[data-test="suggestion-item"]', 
+        'select-suggestion', 
+        3
+      );
       
       // Get initial relation count
       const initialRelationCount = await page.locator('[data-test="relation-item"]').count();
@@ -433,14 +458,10 @@ test.describe('AI Analysis Features', () => {
   test.describe('Analysis Integration', () => {
     test('should combine multiple analyses', async ({ page }) => {
       // Run importance analysis
-      await page.getByTestId('ai-importance-tab').click();
-      await page.getByTestId('run-importance-analysis').click();
-      await expect(page.getByTestId('analysis-loading')).toBeHidden({ timeout: 10000 });
+      await aiHelpers.runAnalysis('ai-importance-tab', 'run-importance-analysis');
       
       // Run cluster detection
-      await page.getByTestId('ai-clusters-tab').click();
-      await page.getByTestId('run-cluster-detection').click();
-      await expect(page.getByTestId('analysis-loading')).toBeHidden({ timeout: 10000 });
+      await aiHelpers.runAnalysis('ai-clusters-tab', 'run-cluster-detection');
       
       // Enable combined visualization
       await page.getByTestId('combine-analyses-button').click();
@@ -455,48 +476,25 @@ test.describe('AI Analysis Features', () => {
 
     test('should save analysis session', async ({ page }) => {
       // Run multiple analyses
-      await page.getByTestId('ai-importance-tab').click();
-      await page.getByTestId('run-importance-analysis').click();
-      await expect(page.getByTestId('analysis-loading')).toBeHidden({ timeout: 10000 });
-      
-      await page.getByTestId('ai-patterns-tab').click();
-      await page.getByTestId('run-pattern-detection').click();
-      await expect(page.getByTestId('analysis-loading')).toBeHidden({ timeout: 10000 });
+      await aiHelpers.runAnalysis('ai-importance-tab', 'run-importance-analysis');
+      await aiHelpers.runAnalysis('ai-patterns-tab', 'run-pattern-detection');
       
       // Save session
-      await page.getByTestId('save-analysis-session').click();
-      await page.getByTestId('session-name-input').fill('Test Analysis Session');
-      await page.getByTestId('confirm-save-session').click();
-      
-      // Verify session saved
-      await expect(page.getByTestId('session-saved-notification')).toBeVisible();
-      await expect(page.getByTestId('session-saved-notification')).toContainText('saved successfully');
+      await aiHelpers.saveAnalysisSession('Test Analysis Session');
     });
 
     test('should load saved analysis session', async ({ page }) => {
       // First save a session
-      await page.getByTestId('ai-importance-tab').click();
-      await page.getByTestId('run-importance-analysis').click();
-      await expect(page.getByTestId('analysis-loading')).toBeHidden({ timeout: 10000 });
-      
-      await page.getByTestId('save-analysis-session').click();
-      await page.getByTestId('session-name-input').fill('Load Test Session');
-      await page.getByTestId('confirm-save-session').click();
+      await aiHelpers.runAnalysis('ai-importance-tab', 'run-importance-analysis');
+      await aiHelpers.saveAnalysisSession('Load Test Session');
       
       // Reload page
       await page.reload();
       await page.waitForLoadState('networkidle');
-      
-      // Ensure AI sidebar is visible
-      const aiSidebar = page.getByTestId('ai-sidebar');
-      if (!(await aiSidebar.isVisible())) {
-        await page.getByTestId('toggle-ai-sidebar').click();
-      }
+      await aiHelpers.ensureAISidebarVisible();
       
       // Load session
-      await page.getByTestId('load-analysis-session').click();
-      await page.getByTestId('session-list-item').filter({ hasText: 'Load Test Session' }).click();
-      await page.getByTestId('confirm-load-session').click();
+      await aiHelpers.loadAnalysisSession('Load Test Session');
       
       // Verify analysis results are restored
       await page.getByTestId('ai-importance-tab').click();
@@ -507,20 +505,14 @@ test.describe('AI Analysis Features', () => {
   test.describe('Analysis Error Handling', () => {
     test('should handle analysis failure gracefully', async ({ page }) => {
       // Mock API error
-      await page.route('**/api/ai/analyze', route => 
-        route.fulfill({ status: 500, body: 'Analysis failed' })
-      );
+      await aiHelpers.mockAPIError('**/api/ai/analyze');
       
       // Try to run analysis
       await page.getByTestId('ai-importance-tab').click();
       await page.getByTestId('run-importance-analysis').click();
       
-      // Verify error message
-      await expect(page.getByTestId('analysis-error')).toBeVisible({ timeout: 10000 });
-      await expect(page.getByTestId('analysis-error')).toContainText('failed');
-      
-      // Verify retry option
-      await expect(page.getByTestId('retry-analysis')).toBeVisible();
+      // Verify error handling
+      await aiHelpers.verifyErrorHandling();
     });
 
     test('should handle empty graph analysis', async ({ page }) => {
@@ -528,20 +520,14 @@ test.describe('AI Analysis Features', () => {
       await dbUtils.cleanDatabase();
       await page.reload();
       await page.waitForLoadState('networkidle');
-      
-      // Ensure AI sidebar is visible
-      const aiSidebar = page.getByTestId('ai-sidebar');
-      if (!(await aiSidebar.isVisible())) {
-        await page.getByTestId('toggle-ai-sidebar').click();
-      }
+      await aiHelpers.ensureAISidebarVisible();
       
       // Try to run analysis on empty graph
       await page.getByTestId('ai-importance-tab').click();
       await page.getByTestId('run-importance-analysis').click();
       
       // Verify appropriate message
-      await expect(page.getByTestId('empty-graph-message')).toBeVisible();
-      await expect(page.getByTestId('empty-graph-message')).toContainText('No data to analyze');
+      await aiHelpers.verifyEmptyGraphMessage();
     });
   });
 });

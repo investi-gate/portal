@@ -1,4 +1,4 @@
-import { Client, Pool } from 'pg';
+import { Pool } from 'pg';
 import * as dotenv from 'dotenv';
 
 // Load appropriate environment file based on NODE_ENV
@@ -8,7 +8,7 @@ if (process.env.NODE_ENV === 'test') {
   dotenv.config();
 }
 
-const connectionString = process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/investi_gate?sslmode=disable';
+const connectionString = process.env.DATABASE_URL!;
 
 export const createPool = () => {
   return new Pool({
@@ -19,12 +19,4 @@ export const createPool = () => {
   });
 };
 
-export const createClient = async () => {
-  const client = new Client({
-    connectionString,
-  });
-  await client.connect();
-  return client;
-};
-
-export type DatabaseClient = Client | Pool;
+export type DatabaseClient = Pool;
